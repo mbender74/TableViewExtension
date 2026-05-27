@@ -11,8 +11,7 @@
 #import "TiUITableViewSectionProxy.h"
 #import "TiUtils.h"
 
-// Performance logging - always enabled
-#define SmoothLog(fmt, ...) NSLog(@"[TableViewExtension/Smooth] " fmt, ##__VA_ARGS__)
+// Performance logging - always enabled via NSLog
 
 // Performance measurement helpers
 typedef struct {
@@ -54,8 +53,8 @@ static CGFloat totalHeightCalculationTime = 0;
         cacheHitCount = 0;
         cacheMissCount = 0;
         totalHeightCalculationTime = 0;
-        SmoothLog(@"Height cache initialized (limit: 500 entries, 10MB)");
-        SmoothLog(@"Performance tracking enabled");
+        NSLog(@"Height cache initialized (limit: 500 entries, 10MB)");
+        NSLog(@"Performance tracking enabled");
     }
 }
 
@@ -63,7 +62,7 @@ static CGFloat totalHeightCalculationTime = 0;
 {
     if (sharedHeightCache) {
         [sharedHeightCache removeAllObjects];
-        SmoothLog(@"Height cache cleared");
+        NSLog(@"Height cache cleared");
     }
 }
 
@@ -72,7 +71,7 @@ static CGFloat totalHeightCalculationTime = 0;
     if (sharedHeightCache) {
         NSString *key = [self cacheKeyForIndexPath:indexPath];
         [sharedHeightCache removeObjectForKey:key];
-        SmoothLog(@"Height cache invalidated for row %ld section %ld", (long)indexPath.row, (long)indexPath.section);
+        NSLog(@"Height cache invalidated for row %ld section %ld", (long)indexPath.row, (long)indexPath.section);
     }
 }
 
@@ -94,7 +93,7 @@ static CGFloat totalHeightCalculationTime = 0;
     CGFloat hitRate = totalRequests > 0 ? (CGFloat)cacheHitCount / totalRequests * 100.0 : 0;
     CGFloat avgTime = cacheMissCount > 0 ? totalHeightCalculationTime / cacheMissCount : 0;
     
-    SmoothLog(@"Cache stats: %ld hits, %ld misses, %.1f%% hit rate, avg %.2fms/calc",
+    NSLog(@"Cache stats: %ld hits, %ld misses, %.1f%% hit rate, avg %.2fms/calc",
              (long)cacheHitCount, (long)cacheMissCount, hitRate, avgTime);
     
     return @{
@@ -127,12 +126,12 @@ static CGFloat totalHeightCalculationTime = 0;
     
     if (cached) {
         cacheHitCount++;
-        SmoothLog(@"Cache HIT for row %ld: %.1f", (long)indexPath.row, cached.floatValue);
+        NSLog(@"Cache HIT for row %ld: %.1f", (long)indexPath.row, cached.floatValue);
         return cached.floatValue;
     }
     
     cacheMissCount++;
-    SmoothLog(@"Cache MISS for row %ld, calculating...", (long)indexPath.row);
+    NSLog(@"Cache MISS for row %ld, calculating...", (long)indexPath.row);
     
     // Measure height calculation time
     PerformanceTimer timer = timerStart();
@@ -144,7 +143,7 @@ static CGFloat totalHeightCalculationTime = 0;
     timer = timerStop(timer);
     totalHeightCalculationTime += timer.durationMs;
     
-    SmoothLog(@"Height calculated: %.1fpt in %.2fms", height, timer.durationMs);
+    NSLog(@"Height calculated: %.1fpt in %.2fms", height, timer.durationMs);
     
     // Store in cache
     [sharedHeightCache setObject:@(height) forKey:key cost:sizeof(CGFloat)];
@@ -164,7 +163,7 @@ static CGFloat totalHeightCalculationTime = 0;
         // Use automatic dimension for rows with Ti.UI.SIZE
         tableview.rowHeight = UITableViewAutomaticDimension;
         
-        SmoothLog(@"Estimated heights enabled: %.1f", estimatedHeight);
+        NSLog(@"Estimated heights enabled: %.1f", estimatedHeight);
     }
 }
 
@@ -174,7 +173,7 @@ static CGFloat totalHeightCalculationTime = 0;
 {
     // Prefetching is handled by iOS UITableView automatically
     // We just need to make sure our height calculation is fast
-    SmoothLog(@"Prefetching enabled (uses cached heights)");
+    NSLog(@"Prefetching enabled (uses cached heights)");
 }
 
 @end
@@ -228,7 +227,7 @@ static CGFloat fps = 60;
     
     // Log performance every 30 frames
     if (frameCount % 30 == 0) {
-        SmoothLog(@"Scroll FPS: %.1f | Cache: %ld entries", 
+        NSLog(@"Scroll FPS: %.1f | Cache: %ld entries", 
                  fps, (long)[sharedHeightCache count]);
     }
 }
@@ -240,6 +239,23 @@ static CGFloat fps = 60;
         @"frameCount": @(frameCount),
         @"cacheEntries": @(sharedHeightCache ? [sharedHeightCache count] : @0)
     };
+}
+
+- (void)logPerformance
+{
+    NSUInteger totalRequests = cacheHitCount + cacheMissCount;
+    CGFloat hitRate = totalRequests > 0 ? (CGFloat)cacheHitCount / totalRequests * 100.0 : 0;
+    CGFloat avgTime = cacheMissCount > 0 ? totalHeightCalculationTime / cacheMissCount : 0;
+    
+    NSLog(@"[TableViewExtension/Smooth] === Performance Report ===");
+    NSLog(@"[TableViewExtension/Smooth] Scroll FPS: %.1f", fps);
+    NSLog(@"[TableViewExtension/Smooth] Cache Hit Rate: %.1f%% (%ld/%ld)", 
+         hitRate, (long)cacheHitCount, (long)totalRequests);
+    NSLog(@"[TableViewExtension/Smooth] Avg Height Calc: %.2fms", avgTime);
+    NSLog(@"[TableViewExtension/Smooth] Cache Size: %ld entries, %.1fKB",
+         (long)[sharedHeightCache count], 
+         (double)[sharedHeightCache totalCost] / 1024.0);
+    NSLog(@"[TableViewExtension/Smooth] ============================");
 }
 
 @end

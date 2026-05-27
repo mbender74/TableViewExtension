@@ -43,6 +43,12 @@
  */
 - (NSDictionary *)getPerformanceStats;
 
+/**
+ * Log current performance stats to console (NSLog).
+ * Call this from JavaScript to see real-time metrics.
+ */
+- (void)logPerformance;
+
 #pragma mark - Estimated Heights
 
 /**

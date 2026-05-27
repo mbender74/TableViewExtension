@@ -73,4 +73,9 @@
     return [(TiUITableView *)[self view] getPerformanceStats];
 }
 
+- (void)logPerformance:(id)args
+{
+    [(TiUITableView *)[self view] logPerformance];
+}
+
 @end
