@@ -15,6 +15,10 @@
 
 @implementation TiUIScrollView (Extended)
 
+// Configurable constants
+static const CGFloat kDefaultSafeAreaOffset = 34;  // Default safe area offset (iOS tab bar)
+static const CGFloat kDefaultAnimationDuration = 211; // ms
+
 UIEdgeInsets scrollViewContentInsets;
 
 
@@ -22,7 +26,7 @@ UIEdgeInsets scrollViewContentInsets;
 {
     /*
      * Calculate the bottom height & width and, sets the offset from the
-     * content view’s origin that corresponds to the receiver’s origin.
+     * content view's origin that corresponds to the receiver's origin.
      */
     UIScrollView *currScrollView = [self scrollView];
     
@@ -30,9 +34,9 @@ UIEdgeInsets scrollViewContentInsets;
     CGSize svBoundSize = currScrollView.bounds.size;
     CGFloat svBottomInsets = currScrollView.contentInset.bottom;
     
-    CGFloat bottomHeight = svContentSize.height - svBoundSize.height + svBottomInsets + 34;
+    CGFloat bottomHeight = svContentSize.height - svBoundSize.height + svBottomInsets + kDefaultSafeAreaOffset;
     CGFloat bottomWidth = svContentSize.width - svBoundSize.width;
-    
+
     CGPoint newOffset = CGPointMake(bottomWidth,bottomHeight);
     [UIView setAnimationsEnabled:NO];
     [currScrollView setContentOffset:newOffset animated:NO];
@@ -43,7 +47,7 @@ UIEdgeInsets scrollViewContentInsets;
 -(void)setContentInsets_:(id)value withObject:(id)props
 {
     UIScrollView *currScrollView = [self scrollView];
-    
+
     UIEdgeInsets insets = [TiUtils contentInsets:value];
     UIEdgeInsets insetsScroll = [TiUtils contentInsets:value];
 
@@ -55,32 +59,32 @@ UIEdgeInsets scrollViewContentInsets;
     BOOL nobottom = [TiUtils boolValue:@"nobottom" properties:props def:NO];
     BOOL noOffset = [TiUtils boolValue:@"noOffset" properties:props def:NO];
 
-    
-    
-    
+
+
+
     void (^setInset)(void) = ^{
-        
+
         [currScrollView setContentInset:insets];
         [currScrollView setScrollIndicatorInsets:insets];
-        
+
         scrollViewContentInsets = [currScrollView contentInset];
-        
+
         CGFloat topInset = insets.top;
         CGFloat bottomInset = insets.bottom;
         CGFloat leftInset = insets.left;
         CGFloat rightInset = insets.right;
-        
+
         NSMutableDictionary *contentDictionary = [[NSMutableDictionary alloc]init];
         [contentDictionary setValue:[NSNumber numberWithFloat:topInset] forKey:@"top"];
         [contentDictionary setValue:[NSNumber numberWithFloat:bottomInset] forKey:@"bottom"];
         [contentDictionary setValue:[NSNumber numberWithFloat:leftInset] forKey:@"left"];
         [contentDictionary setValue:[NSNumber numberWithFloat:rightInset] forKey:@"right"];
-        
+
         [self.proxy replaceValue:contentDictionary
                     forKey:@"contentInsets"
               notification:NO];
 
-        
+
         if (noOffset == NO){
             if (nobottom == NO){
                 CGSize svContentSize = currScrollView.contentSize;
@@ -88,7 +92,7 @@ UIEdgeInsets scrollViewContentInsets;
                 CGFloat svBottomInsets = currScrollView.contentInset.bottom;
                 CGFloat bottomHeight = svContentSize.height - svBoundSize.height + svBottomInsets + safeArea;
                 CGFloat bottomWidth = svContentSize.width - svBoundSize.width;
-                
+
                 CGPoint newOffset = CGPointMake(bottomWidth, bottomHeight);
 
                 [currScrollView setContentOffset:newOffset];
@@ -99,17 +103,17 @@ UIEdgeInsets scrollViewContentInsets;
                 CGFloat svBottomInsets = currScrollView.contentInset.bottom;
                 CGFloat bottomHeight = svContentSize.height - svBoundSize.height + svBottomInsets + safeArea;
                 CGFloat bottomWidth = svContentSize.width - svBoundSize.width;
-                
+
                 CGPoint newOffset = CGPointMake(bottomWidth, newoffset);
 
                 [currScrollView setContentOffset:newOffset];
             }
         }
-        
+
 
     };
     if (animated) {
-        double duration = [TiUtils doubleValue:@"duration" properties:props def:211]/1000;
+        double duration = [TiUtils doubleValue:@"duration" properties:props def:kDefaultAnimationDuration]/1000;
         [UIView animateWithDuration:duration animations:setInset];
     }
     else {
@@ -122,24 +126,24 @@ UIEdgeInsets scrollViewContentInsets;
 -(void)setScrollIndicatorInsets_:(id)value withObject:(id)props
 {
     UIScrollView *currScrollView = [self scrollView];
-    
+
     UIEdgeInsets insetsScroll = [TiUtils contentInsets:value];
 
-    
+
     BOOL animated = [TiUtils boolValue:@"animated" properties:props def:NO];
     BOOL nobottom = [TiUtils boolValue:@"nobottom" properties:props def:NO];
-    
-    
-    
+
+
+
     void (^setInset)(void) = ^{
-        
+
         [currScrollView setScrollIndicatorInsets:insetsScroll];
-        
-              
+
+
 
     };
     if (animated) {
-        double duration = [TiUtils doubleValue:@"duration" properties:props def:211]/1000;
+        double duration = [TiUtils doubleValue:@"duration" properties:props def:kDefaultAnimationDuration]/1000;
         [UIView animateWithDuration:duration animations:setInset];
     }
     else {

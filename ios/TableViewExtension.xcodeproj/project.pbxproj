@@ -40,6 +40,8 @@
 		2C918A042FC6B50B000E101A /* TiUIScrollView+Extended.m in Sources */ = {isa = PBXBuildFile; fileRef = 2C9189E82FC6B50B000E101A /* TiUIScrollView+Extended.m */; };
 		2C918A052FC6B50B000E101A /* TiUIViewProxy+Extended.m in Sources */ = {isa = PBXBuildFile; fileRef = 2C9189F42FC6B50B000E101A /* TiUIViewProxy+Extended.m */; };
 		2C918A062FC6B50B000E101A /* TiUITableViewRowProxy+WithVisibility.m in Sources */ = {isa = PBXBuildFile; fileRef = 2C9189F02FC6B50B000E101A /* TiUITableViewRowProxy+WithVisibility.m */; };
+		2CF044112FC71A7B009C01F1 /* TiUITableViewCell+WithReuse.m in Sources */ = {isa = PBXBuildFile; fileRef = 2CF044102FC71A7B009C01F1 /* TiUITableViewCell+WithReuse.m */; };
+		2CF044122FC71A7B009C01F1 /* TiUITableViewCell+WithReuse.h in Headers */ = {isa = PBXBuildFile; fileRef = 2CF0440F2FC71A7B009C01F1 /* TiUITableViewCell+WithReuse.h */; };
 		AA747D9F0F9514B9006C5449 /* DeMarcbenderTableviewextension_Prefix.pch in Headers */ = {isa = PBXBuildFile; fileRef = AA747D9E0F9514B9006C5449 /* DeMarcbenderTableviewextension_Prefix.pch */; };
 		AACBBE4A0F95108600F1A2B1 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AACBBE490F95108600F1A2B1 /* Foundation.framework */; };
 		B11E042C241AC5C100EFA7DC /* TitaniumKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = B11E042B241AC5C100EFA7DC /* TitaniumKit.xcframework */; };
@@ -75,6 +77,8 @@
 		2C9189F22FC6B50B000E101A /* TiUIView+Extended.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = "TiUIView+Extended.m"; path = "Classes/TiUIView+Extended.m"; sourceTree = "<group>"; };
 		2C9189F32FC6B50B000E101A /* TiUIViewProxy+Extended.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "TiUIViewProxy+Extended.h"; path = "Classes/TiUIViewProxy+Extended.h"; sourceTree = "<group>"; };
 		2C9189F42FC6B50B000E101A /* TiUIViewProxy+Extended.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = "TiUIViewProxy+Extended.m"; path = "Classes/TiUIViewProxy+Extended.m"; sourceTree = "<group>"; };
+		2CF0440F2FC71A7B009C01F1 /* TiUITableViewCell+WithReuse.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "TiUITableViewCell+WithReuse.h"; path = "Classes/TiUITableViewCell+WithReuse.h"; sourceTree = "<group>"; };
+		2CF044102FC71A7B009C01F1 /* TiUITableViewCell+WithReuse.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = "TiUITableViewCell+WithReuse.m"; path = "Classes/TiUITableViewCell+WithReuse.m"; sourceTree = "<group>"; };
 		AA747D9E0F9514B9006C5449 /* DeMarcbenderTableviewextension_Prefix.pch */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DeMarcbenderTableviewextension_Prefix.pch; sourceTree = SOURCE_ROOT; };
 		AACBBE490F95108600F1A2B1 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
 		B11E042B241AC5C100EFA7DC /* TitaniumKit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = TitaniumKit.xcframework; path = "$(TITANIUM_SDK)/iphone/Frameworks/TitaniumKit.xcframework"; sourceTree = "<group>"; };
@@ -139,6 +143,8 @@
 				2C9189EE2FC6B50B000E101A /* TiUITableViewProxy+Snappy.m */,
 				2C9189EF2FC6B50B000E101A /* TiUITableViewRowProxy+WithVisibility.h */,
 				2C9189F02FC6B50B000E101A /* TiUITableViewRowProxy+WithVisibility.m */,
+				2CF0440F2FC71A7B009C01F1 /* TiUITableViewCell+WithReuse.h */,
+				2CF044102FC71A7B009C01F1 /* TiUITableViewCell+WithReuse.m */,
 				2C9189F12FC6B50B000E101A /* TiUIView+Extended.h */,
 				2C9189F22FC6B50B000E101A /* TiUIView+Extended.m */,
 				2C9189F32FC6B50B000E101A /* TiUIViewProxy+Extended.h */,
@@ -167,6 +173,7 @@
 				2C9189F52FC6B50B000E101A /* TiUIScrollView+Extended.h in Headers */,
 				2C9189F62FC6B50B000E101A /* TiUITableViewRowProxy+WithVisibility.h in Headers */,
 				2C9189F72FC6B50B000E101A /* TiUITableViewProxy+Snappy.h in Headers */,
+				2CF044122FC71A7B009C01F1 /* TiUITableViewCell+WithReuse.h in Headers */,
 				2C9189F82FC6B50B000E101A /* DeMarcbenderTableviewextensionModule.h in Headers */,
 				2C9189F92FC6B50B000E101A /* TiUIViewProxy+Extended.h in Headers */,
 				2C9189FA2FC6B50B000E101A /* DeMarcbenderTableviewextensionModuleAssets.h in Headers */,
@@ -247,6 +254,7 @@
 				2C9189FE2FC6B50B000E101A /* TiUITableViewProxy+Snappy.m in Sources */,
 				2C9189FF2FC6B50B000E101A /* TiUITableView+Snappy.m in Sources */,
 				2C918A002FC6B50B000E101A /* DeMarcbenderTableviewextensionModuleAssets.m in Sources */,
+				2CF044112FC71A7B009C01F1 /* TiUITableViewCell+WithReuse.m in Sources */,
 				2C918A012FC6B50B000E101A /* TiUIScrollViewProxy+Extended.m in Sources */,
 				2C918A022FC6B50B000E101A /* TiUIView+Extended.m in Sources */,
 				2C918A032FC6B50B000E101A /* DeMarcbenderTableviewextensionModule.m in Sources */,

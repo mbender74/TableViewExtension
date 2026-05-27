@@ -20,5 +20,5 @@
 @class TiUITableViewSectionProxy;
 
 @interface TiUITableViewProxy (Snappy)
-
+- (void)setEstimatedRowHeight;
 @end

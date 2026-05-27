@@ -17,26 +17,23 @@
 -(void)opaqueView
 {
     /*
-     * Calculate the bottom height & width and, sets the offset from the
-     * content view’s origin that corresponds to the receiver’s origin.
+     * Make view and all subviews opaque with clipping enabled.
+     * Useful for performance optimization by reducing compositing costs.
      */
     UIView *myView = self;
 
-    myView.layer.backgroundColor = [UIColor yellowColor].CGColor;
     myView.opaque = YES;
     myView.layer.masksToBounds = YES;
     myView.clipsToBounds = YES;
     
     for (CALayer *layer in [myView.layer sublayers]) {
-
         layer.masksToBounds = YES;
-        layer.backgroundColor = [UIColor yellowColor].CGColor;
     }
+    
     for (UIView *view in [myView subviews]) {
         view.clipsToBounds = YES;
         view.opaque = YES;
         view.layer.masksToBounds = YES;
-        view.backgroundColor = [UIColor yellowColor];
     }
 
 }

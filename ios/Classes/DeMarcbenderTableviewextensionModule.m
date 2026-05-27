@@ -23,7 +23,7 @@
 // this is generated for your module, please do not change it
 -(NSString*)moduleId
 {
-	return @"net.cappelleri.tableviewrowextension";
+	return @"de.marcbender.tableviewextension";
 }
 
 #pragma mark Lifecycle

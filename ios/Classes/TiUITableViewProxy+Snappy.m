@@ -77,6 +77,12 @@ USE_VIEW_FOR_CONTENT_HEIGHT
     [(TiUITableView *)[self view] handleTouches:value];
 }
 
+- (void)setEstimatedRowHeight
+{
+    // Set estimatedRowHeight to 0 for consistent height calculation (SDK behavior)
+    [(TiUITableView *)[self view] setEstimatedRowHeight:0];
+}
+
 //-(void)appendRowBeforeRow:(id)newRow
 //{
 //    [(TiUITableView *)[self view] appendRowBefore:newRow];

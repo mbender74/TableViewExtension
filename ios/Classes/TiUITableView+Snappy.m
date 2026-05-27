@@ -14,25 +14,29 @@
 #import "TiUITableViewRowProxy.h"
 #import "TiUITableViewRowProxy+WithVisibility.h"
 
+// Debug logging macro
+#ifndef DEBUG
+#define TableViewExtensionLog(fmt, ...) do {} while(0)
+#else
+#define TableViewExtensionLog(fmt, ...) NSLog(@"[TableViewExtension] " fmt, ##__VA_ARGS__)
+#endif
+
 @interface TiUITableView (SnappyMethods)
 - (void)insertRow:(TiUITableViewRowProxy *)row before:(TiUITableViewRowProxy *)before;
 - (TiUITableViewRowProxy *)rowForIndexPath:(NSIndexPath *)indexPath;
 - (TiUITableViewSectionProxy *)sectionForIndex:(NSInteger)sectionIndex;
 - (NSInteger)rowIndexForIndexPath:(NSIndexPath *)indexPath andSections:(NSArray *)sections;
-@end
-
-@interface TiUITableView (Snappy)
-//-(NSInteger)isVisible:(id)args;
-//-(NSInteger)getTopOffset:(id)args;
-
 - (CGFloat)computeRowWidth;
-
 @end
-
 
 @implementation TiUITableView (Snappy)
 
-CGFloat roundingHeight = 160;
+// Configurable constants
+static const CGFloat kRoundingHeight = 160;           // Snapping tolerance in points
+static const CGFloat kDecelerationRateSlow = 0.9975;
+static const CGFloat kDecelerationRateFast = 0.9980;
+static const CGFloat kDefaultAnimationDuration = 180; // ms
+
 #define RECOGNIZE_SIMULTANEOUSLY_PAN    (1 << 15)
 UIEdgeInsets tableContentInsets;
 
@@ -69,7 +73,7 @@ typedef struct {
 //         NSLog ( @"\n SCROLL SLOW %f",decelerationRate);
 //
 //        table.decelerationRate = decelerationRate;
-        CGFloat decelerationRate = 0.997500;
+        CGFloat decelerationRate = kDecelerationRateSlow;
 
         //CGFloat decelerationRate = UIScrollViewDecelerationRateFast +(UIScrollViewDecelerationRateNormal - UIScrollViewDecelerationRateFast) * .52;
         [table setValue:[NSValue valueWithCGSize:CGSizeMake(decelerationRate,decelerationRate)] forKey:@"_decelerationFactor"];
@@ -81,7 +85,7 @@ typedef struct {
 //        NSLog ( @"\n SCROLL SLOW %f",decelerationRate);
 //
 //        table.decelerationRate = UIScrollViewDecelerationRateNormal;
-        CGFloat decelerationRate = 0.998000;
+        CGFloat decelerationRate = kDecelerationRateFast;
 
         //CGFloat decelerationRate = UIScrollViewDecelerationRateFast +(UIScrollViewDecelerationRateNormal - UIScrollViewDecelerationRateFast) * .52;
         [table setValue:[NSValue valueWithCGSize:CGSizeMake(decelerationRate,decelerationRate)] forKey:@"_decelerationFactor"];
@@ -298,7 +302,7 @@ typedef struct {
       //  dispatch_async(dispatch_get_main_queue(), ^{
 
           [UIView performWithoutAnimation:^{
-              CGPoint contentOffet = tableview.contentOffset;
+              CGPoint contentOffet = self->tableview.contentOffset;
              // NSLog(@"row.preoffset  %f\n",contentOffet.y);
 
               CGFloat preoffset = contentOffet.y;
@@ -306,8 +310,8 @@ typedef struct {
               afteroffset = preoffset + cellheight;//
               contentOffet.y = afteroffset;
            //   [tableview beginUpdates];
-              [tableview setContentOffset:contentOffet];
-              [tableview insertRowsAtIndexPaths:[NSArray arrayWithObject:path] withRowAnimation:UITableViewRowAnimationNone];
+              [self->tableview setContentOffset:contentOffet];
+              [self->tableview insertRowsAtIndexPaths:[NSArray arrayWithObject:path] withRowAnimation:UITableViewRowAnimationNone];
            //   [tableview endUpdates];
             
           }];
@@ -387,9 +391,9 @@ typedef struct {
     
     void (^setInset)(void) = ^{
         
-        [tableview setContentInset:insets];
-        [tableview setScrollIndicatorInsets:insets];
-        tableContentInsets = [tableview contentInset];
+        [self->tableview setContentInset:insets];
+        [self->tableview setScrollIndicatorInsets:insets];
+        tableContentInsets = [self->tableview contentInset];
         
         
         CGFloat topInset = insets.top;
@@ -412,32 +416,32 @@ typedef struct {
         
         if (noOffset == NO){
             if (nobottom == NO){
-                CGSize svContentSize = tableview.contentSize;
-                CGSize svBoundSize = tableview.bounds.size;
-                CGFloat svBottomInsets = tableview.contentInset.bottom;
+                CGSize svContentSize = self->tableview.contentSize;
+                CGSize svBoundSize = self->tableview.bounds.size;
+                CGFloat svBottomInsets = self->tableview.contentInset.bottom;
                 CGFloat bottomHeight = svContentSize.height - svBoundSize.height + svBottomInsets + safeArea;
                 CGFloat bottomWidth = svContentSize.width - svBoundSize.width;
 
                 CGPoint newOffset = CGPointMake(bottomWidth, bottomHeight);
 
-                [tableview setContentOffset:newOffset];
+                [self->tableview setContentOffset:newOffset];
             }
             if (newoffset != 0){
-                CGSize svContentSize = tableview.contentSize;
-                CGSize svBoundSize = tableview.bounds.size;
-                CGFloat svBottomInsets = tableview.contentInset.bottom;
+                CGSize svContentSize = self->tableview.contentSize;
+                CGSize svBoundSize = self->tableview.bounds.size;
+                CGFloat svBottomInsets = self->tableview.contentInset.bottom;
                 CGFloat bottomHeight = svContentSize.height - svBoundSize.height + svBottomInsets + safeArea;
                 CGFloat bottomWidth = svContentSize.width - svBoundSize.width;
 
                 CGPoint newOffset = CGPointMake(bottomWidth, newoffset);
 
-                [tableview setContentOffset:newOffset];
+                [self->tableview setContentOffset:newOffset];
             }
         }
 
     };
     if (animated) {
-        double duration = [TiUtils doubleValue:@"duration" properties:props def:180]/1000;
+        double duration = [TiUtils doubleValue:@"duration" properties:props def:kDefaultAnimationDuration]/1000;
         [UIView animateWithDuration:duration animations:setInset];
     }
     else {
@@ -456,7 +460,7 @@ typedef struct {
 //    NSLog(@"[ERROR] tableview.contentInset.top Module: %f",tableview.contentInset.top);
 //    NSLog(@"[ERROR] tableview.contentInset.bottom Module: %f",tableview.contentInset.bottom);
 
-    NSLog(@"[ERROR] autoSnappping Module: %f %f",velocity.y,targetOffset->y);
+    TableViewExtensionLog(@"autoSnappping velocity: %f, targetOffset: %f", velocity.y, targetOffset->y);
 
     CGPoint *mytargetOffset = targetOffset;
     
@@ -474,18 +478,18 @@ typedef struct {
         CGRect cellRect = [tableview rectForRowAtIndexPath:indexPath];
         
         CGFloat targetOffsetYDif = offset->y - CGRectGetMinY(cellRect);
-        if (targetOffsetYDif < roundingHeight) {
+        if (targetOffsetYDif < kRoundingHeight) {
             offset->y = CGRectGetMinY(cellRect) - tableview.contentInset.top;
-            NSLog(@"[ERROR] (targetOffsetYDif < roundingHeight): %f %f",CGRectGetMinY(cellRect), offset->y);
+            TableViewExtensionLog(@"snapping to top: cellMinY=%f, offset=%f", CGRectGetMinY(cellRect), offset->y);
 
         }
-        else if (targetOffsetYDif > cellRect.size.height - roundingHeight) {
+        else if (targetOffsetYDif > cellRect.size.height - kRoundingHeight) {
             offset->y = CGRectGetMaxY(cellRect) - tableview.contentInset.top;
-            NSLog(@"[ERROR] (targetOffsetYDif > cellRect.size.height - roundingHeight): %f %f",CGRectGetMaxY(cellRect), offset->y);
+            TableViewExtensionLog(@"snapping to bottom: cellMaxY=%f, offset=%f", CGRectGetMaxY(cellRect), offset->y);
 
         }
        // [tableview setContentOffset:*offset];
-        NSLog(@"[ERROR] (targetOffset -- offset): %f %f",targetOffset->y,offset->y);
+        TableViewExtensionLog(@"final targetOffset: %f -> %f", targetOffset->y, offset->y);
 
     }
     else {
@@ -574,6 +578,54 @@ typedef struct {
 
 
 
+
+#pragma mark - Row Management
+
+- (void)appendRowFast:(id)dict
+{
+    BOOL animated = [TiUtils boolValue:[dict objectForKey:@"animated"] def:NO];
+    NSInteger section = [[dict objectForKey:@"section"] integerValue];
+
+    // Get sections and row count
+    NSArray *sections = [self valueForKey:@"sections"];
+    TiUITableViewSectionProxy *sectionProxy = [sections objectAtIndex:section];
+    NSInteger numberOfRows = [[sectionProxy rows] count];
+
+    NSIndexPath *indexPath = [NSIndexPath indexPathForRow:numberOfRows inSection:section];
+
+    // Begin updates for fast row insertion
+    [tableview beginUpdates];
+    [tableview insertRowsAtIndexPaths:@[indexPath] withRowAnimation:animated ? UITableViewRowAnimationAutomatic : UITableViewRowAnimationNone];
+    [tableview endUpdates];
+
+    // Fire visibility callback
+    [self.proxy replaceValue:@"rowvisible" forKey:@"isVisible" notification:YES];
+}
+
+- (void)setOpaqueRows:(BOOL)opaque
+{
+    // Set all row views to opaque for reduced compositing costs
+    NSArray *sections = [self valueForKey:@"sections"];
+    for (TiUITableViewSectionProxy *section in sections) {
+        NSArray *rows = [section rows];
+        for (TiUITableViewRowProxy *row in rows) {
+            NSArray *children = [row valueForKey:@"children"];
+            for (TiViewProxy *child in children) {
+                [[child view] setOpaque:opaque];
+                if (opaque) {
+                    [[child view] setBackgroundColor:[UIColor whiteColor]];
+                }
+            }
+        }
+    }
+}
+
+- (void)setEstimatedRowHeight:(CGFloat)height
+{
+    tableview.estimatedRowHeight = height;
+    tableview.estimatedSectionHeaderHeight = height;
+    tableview.estimatedSectionFooterHeight = height;
+}
 
 - (void)tableView:(UITableView *)thisTableView didEndDisplayingCell:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath
 {

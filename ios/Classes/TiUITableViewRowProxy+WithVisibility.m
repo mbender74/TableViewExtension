@@ -6,6 +6,14 @@
 //
 //
 #define USE_TI_UITABLEVIEW
+
+// Debug logging macro
+#ifndef DEBUG
+#define TableViewExtensionLog(fmt, ...) do {} while(0)
+#else
+#define TableViewExtensionLog(fmt, ...) NSLog(@"[TableViewExtension] " fmt, ##__VA_ARGS__)
+#endif
+
 #import "TiViewProxy.h"
 #import "TiUITableView.h"
 #import "TiUITableViewProxy.h"
@@ -53,6 +61,42 @@
     return [TiUtils boolValue:[self valueForKey:@"isReusable"] def:NO];
 }
 
+
+- (void)prepareTableRowForReuse
+{
+    NSString *tableClass = [self tableClass];
+    TableViewExtensionLog(@"prepareTableRowForReuse — className: %@", tableClass);
+
+    // Wenn row nicht als reusable markiert ist: nur rowContainerView entfernen
+    if (![self reusable]) {
+        TableViewExtensionLog(@"not reusable, removing rowContainerView only");
+        id rowContainer = [self valueForKey:@"rowContainerView"];
+        if (rowContainer) {
+            [rowContainer removeFromSuperview];
+        }
+        return;
+    }
+
+    // Bei custom tableClass: kein Cleanup (SDK-Verhalten)
+    if (![tableClass isEqualToString:@"TiUITableView"]) {
+        TableViewExtensionLog(@"custom tableClass, skipping cleanup");
+        return;
+    }
+
+    TableViewExtensionLog(@"cleaning up rowContainerView + children");
+    // rowContainerView bereinigen
+    id rowContainer = [self valueForKey:@"rowContainerView"];
+    if (rowContainer) {
+        [rowContainer removeFromSuperview];
+        [self setValue:nil forKey:@"rowContainerView"];
+    }
+
+    // Alle Children detachView aufrufen (SDK-Verhalten)
+    NSArray *children = [self valueForKey:@"children"];
+    for (TiViewProxy *child in children) {
+        [child detachView];
+    }
+}
 
 - (void)setSubView:(id)value
 {
@@ -132,7 +176,7 @@
     //    int viewHeightRaw = viewHeight;
     //    int viewHeightWithMargins = viewHeight + (topMargin + bottomMargin);
 //        [value replaceValue:[NSNumber numberWithInt:viewHeight] forKey:@"height" notification:NO];
-        height = [TiUtils dimensionValue:[NSNumber numberWithInt:viewHeight]];
+        self->height = [TiUtils dimensionValue:[NSNumber numberWithInt:viewHeight]];
         [self replaceValue:[NSNumber numberWithInt:viewHeight] forKey:@"height" notification:NO];
 
         //

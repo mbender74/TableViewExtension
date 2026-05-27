@@ -17,5 +17,8 @@
 //@property(nonatomic,readwrite) id contentInsets;
 -(void)setContentInset:(id)value withObject:(id)props;
 -(void)appendRowBeforeRow:(id)newRow;
+-(void)appendRowFast:(id)dict;
+-(void)setOpaqueRows:(BOOL)opaque;
+-(void)setEstimatedRowHeight:(CGFloat)height;
 -(void)handleTouches:(id)value;
 @end
