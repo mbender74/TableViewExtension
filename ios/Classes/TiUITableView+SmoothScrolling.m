@@ -11,12 +11,8 @@
 #import "TiUITableViewSectionProxy.h"
 #import "TiUtils.h"
 
-// Debug logging macro
-#ifndef DEBUG
-#define SmoothLog(fmt, ...) do {} while(0)
-#else
+// Performance logging - always enabled
 #define SmoothLog(fmt, ...) NSLog(@"[TableViewExtension/Smooth] " fmt, ##__VA_ARGS__)
-#endif
 
 // Performance measurement helpers
 typedef struct {
