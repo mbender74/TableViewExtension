@@ -68,4 +68,9 @@
     return [(TiUITableView *)[self view] getCacheStats];
 }
 
+- (NSDictionary *)getPerformanceStats:(id)args
+{
+    return [(TiUITableView *)[self view] getPerformanceStats];
+}
+
 @end

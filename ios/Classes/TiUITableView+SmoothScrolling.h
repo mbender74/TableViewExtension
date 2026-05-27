@@ -28,10 +28,20 @@
 - (void)invalidateHeightCacheForIndexPath:(NSIndexPath *)indexPath;
 
 /**
- * Get cache statistics (hits, misses, size).
- * Returns NSDictionary with keys: hits, misses, count, totalCost
+ * Get cache statistics (hits, misses, size, performance metrics).
+ * Returns NSDictionary with keys:
+ * - hits, misses, count, totalCost
+ * - hitRate (percentage)
+ * - avgCalculationTime (ms per height calculation)
+ * - totalCalculationTime (ms)
  */
 - (NSDictionary *)getCacheStats;
+
+/**
+ * Get scroll performance statistics.
+ * Returns NSDictionary with keys: fps, frameCount, cacheEntries
+ */
+- (NSDictionary *)getPerformanceStats;
 
 #pragma mark - Estimated Heights
 

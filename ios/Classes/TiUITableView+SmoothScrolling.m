@@ -18,8 +18,32 @@
 #define SmoothLog(fmt, ...) NSLog(@"[TableViewExtension/Smooth] " fmt, ##__VA_ARGS__)
 #endif
 
+// Performance measurement helpers
+typedef struct {
+    CFAbsoluteTime startTime;
+    CFAbsoluteTime endTime;
+    CGFloat durationMs;
+} PerformanceTimer;
+
+static inline PerformanceTimer timerStart(void) {
+    PerformanceTimer timer;
+    timer.startTime = CFAbsoluteTimeGetCurrent();
+    timer.endTime = 0;
+    timer.durationMs = 0;
+    return timer;
+}
+
+static inline PerformanceTimer timerStop(PerformanceTimer timer) {
+    timer.endTime = CFAbsoluteTimeGetCurrent();
+    timer.durationMs = (timer.endTime - timer.startTime) * 1000.0;
+    return timer;
+}
+
 // Static cache for row heights
 static NSCache<NSString *, NSNumber *> *sharedHeightCache;
+static NSUInteger cacheHitCount = 0;
+static NSUInteger cacheMissCount = 0;
+static CGFloat totalHeightCalculationTime = 0;
 
 @implementation TiUITableView (SmoothScrolling)
 
@@ -31,7 +55,11 @@ static NSCache<NSString *, NSNumber *> *sharedHeightCache;
         sharedHeightCache = [[NSCache alloc] init];
         sharedHeightCache.countLimit = 500;
         sharedHeightCache.totalCostLimit = 10 * 1024 * 1024; // 10MB
+        cacheHitCount = 0;
+        cacheMissCount = 0;
+        totalHeightCalculationTime = 0;
         SmoothLog(@"Height cache initialized (limit: 500 entries, 10MB)");
+        SmoothLog(@"Performance tracking enabled");
     }
 }
 
@@ -59,15 +87,28 @@ static NSCache<NSString *, NSNumber *> *sharedHeightCache;
             @"hits": @0,
             @"misses": @0,
             @"count": @0,
-            @"totalCost": @0
+            @"totalCost": @0,
+            @"hitRate": @0,
+            @"avgCalculationTime": @0,
+            @"totalCalculationTime": @0
         };
     }
     
+    NSUInteger totalRequests = cacheHitCount + cacheMissCount;
+    CGFloat hitRate = totalRequests > 0 ? (CGFloat)cacheHitCount / totalRequests * 100.0 : 0;
+    CGFloat avgTime = cacheMissCount > 0 ? totalHeightCalculationTime / cacheMissCount : 0;
+    
+    SmoothLog(@"Cache stats: %ld hits, %ld misses, %.1f%% hit rate, avg %.2fms/calc",
+             (long)cacheHitCount, (long)cacheMissCount, hitRate, avgTime);
+    
     return @{
-        @"hits": @([sharedHeightCache totalCount] - [sharedHeightCache count]),
-        @"misses": @([sharedHeightCache count]),
+        @"hits": @(cacheHitCount),
+        @"misses": @(cacheMissCount),
         @"count": @([sharedHeightCache count]),
-        @"totalCost": @([sharedHeightCache totalCost])
+        @"totalCost": @([sharedHeightCache totalCost]),
+        @"hitRate": @(hitRate),
+        @"avgCalculationTime": @(avgTime),
+        @"totalCalculationTime": @(totalHeightCalculationTime)
     };
 }
 
@@ -89,15 +130,25 @@ static NSCache<NSString *, NSNumber *> *sharedHeightCache;
     NSNumber *cached = [sharedHeightCache objectForKey:key];
     
     if (cached) {
+        cacheHitCount++;
         SmoothLog(@"Cache HIT for row %ld: %.1f", (long)indexPath.row, cached.floatValue);
         return cached.floatValue;
     }
     
+    cacheMissCount++;
     SmoothLog(@"Cache MISS for row %ld, calculating...", (long)indexPath.row);
+    
+    // Measure height calculation time
+    PerformanceTimer timer = timerStart();
     
     // Calculate height
     CGFloat width = [row sizeWidthForDecorations:[self computeRowWidth] forceResizing:YES];
     CGFloat height = [row rowHeight:width];
+    
+    timer = timerStop(timer);
+    totalHeightCalculationTime += timer.durationMs;
+    
+    SmoothLog(@"Height calculated: %.1fpt in %.2fms", height, timer.durationMs);
     
     // Store in cache
     [sharedHeightCache setObject:@(height) forKey:key cost:sizeof(CGFloat)];
@@ -149,6 +200,50 @@ static NSCache<NSString *, NSNumber *> *sharedHeightCache;
     CGFloat height = [row rowHeight:width];
     height = [self tableRowHeight:height];
     return height < 1 ? tableview.rowHeight : height;
+}
+
+@end
+
+// Scroll performance monitoring
+@implementation TiUITableView (SmoothScrollingPerformance)
+
+static CFAbsoluteTime lastScrollTime = 0;
+static NSInteger frameCount = 0;
+static CGFloat fps = 60;
+
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView
+{
+    // Call super implementation first
+    if ([self.nextResponder respondsToSelector:@selector(scrollViewDidScroll:)]) {
+        [self.nextResponder scrollViewDidScroll:scrollView];
+    }
+    
+    // Track scroll performance
+    frameCount++;
+    CFAbsoluteTime currentTime = CFAbsoluteTimeGetCurrent();
+    
+    if (lastScrollTime > 0) {
+        CGFloat delta = (currentTime - lastScrollTime) * 1000.0; // ms
+        if (delta > 0) {
+            fps = 1000.0 / delta;
+        }
+    }
+    lastScrollTime = currentTime;
+    
+    // Log performance every 30 frames
+    if (frameCount % 30 == 0) {
+        SmoothLog(@"Scroll FPS: %.1f | Cache: %ld entries", 
+                 fps, (long)[sharedHeightCache count]);
+    }
+}
+
+- (NSDictionary *)getPerformanceStats
+{
+    return @{
+        @"fps": @(fps),
+        @"frameCount": @(frameCount),
+        @"cacheEntries": @(sharedHeightCache ? [sharedHeightCache count] : @0)
+    };
 }
 
 @end

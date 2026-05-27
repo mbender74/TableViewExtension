@@ -18,5 +18,6 @@
 - (void)setSmoothScrolling:(id)value;
 - (void)invalidateHeightCache:(id)args;
 - (NSDictionary *)getCacheStats:(id)args;
+- (NSDictionary *)getPerformanceStats:(id)args;
 
 @end
