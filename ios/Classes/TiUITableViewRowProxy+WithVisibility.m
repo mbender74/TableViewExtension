@@ -15,6 +15,10 @@
 #import "TiUITableViewSectionProxy.h"
 #import "TiUITableViewRowProxy.h"
 
+@interface TiUITableView (IndexPathExtension)
+- (NSIndexPath *)indexPathFromInt:(NSInteger)index;
+@end
+
 @interface TiUITableViewRowProxy (WithVisibility)
 
 @end

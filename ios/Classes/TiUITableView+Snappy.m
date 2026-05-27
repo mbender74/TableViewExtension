@@ -14,6 +14,13 @@
 #import "TiUITableViewRowProxy.h"
 #import "TiUITableViewRowProxy+WithVisibility.h"
 
+@interface TiUITableView (SnappyMethods)
+- (void)insertRow:(TiUITableViewRowProxy *)row before:(TiUITableViewRowProxy *)before;
+- (TiUITableViewRowProxy *)rowForIndexPath:(NSIndexPath *)indexPath;
+- (TiUITableViewSectionProxy *)sectionForIndex:(NSInteger)sectionIndex;
+- (NSInteger)rowIndexForIndexPath:(NSIndexPath *)indexPath andSections:(NSArray *)sections;
+@end
+
 @interface TiUITableView (Snappy)
 //-(NSInteger)isVisible:(id)args;
 //-(NSInteger)getTopOffset:(id)args;
@@ -132,9 +139,11 @@ typedef struct {
     CGPoint translation = [sender translationInView:self.superview];
     CGPoint velocity = [sender velocityInView:self.superview];
     
+    TiPoint *translationPoint = [[TiPoint alloc] initWithPoint:translation];
+    TiPoint *velocityPoint = [[TiPoint alloc] initWithPoint:velocity];
     NSDictionary *args = [NSDictionary dictionaryWithObjectsAndKeys:
-                          [[[TiPoint alloc] initWithPoint:translation] autorelease], @"translation",
-                          [[[TiPoint alloc] initWithPoint:velocity] autorelease], @"velocity", nil];
+                          translationPoint, @"translation",
+                          velocityPoint, @"velocity", nil];
     if([self.proxy _hasListeners:@"pan"]){
         [self.proxy fireEvent:@"pan" withObject:args];
     }
@@ -165,7 +174,6 @@ typedef struct {
         {
             panGesture.delegate = self;
         }
-        [panGesture release];
     } else{
         UIGestureRecognizer *panGesture = nil;
         for(UIGestureRecognizer *gesure in self.gestureRecognizers){
