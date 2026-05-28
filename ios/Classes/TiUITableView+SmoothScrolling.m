@@ -55,11 +55,12 @@ static CFAbsoluteTime frameTimestamps[60];
 static NSInteger fpsSampleIndex = 0;
 
 // Preload queue configuration
-static const NSInteger kPreloadAheadRows = 10; // Rows to preload ahead
-static const NSInteger kPreloadBehindRows = 5;  // Rows to preload behind
+static const NSInteger kPreloadAheadRows = 5;   // Rows to preload ahead (reduced from 10 to prevent jank)
+static const NSInteger kPreloadBehindRows = 3;  // Rows to preload behind (reduced from 5)
 static dispatch_queue_t preloadQueue = nil;
 static BOOL isPreloading = NO;
 static NSInteger lastVisibleRow = -1;
+static NSInteger scrollEventCount = 0; // Counter to throttle preload calls
 
 // Scroll event throttling
 static CFAbsoluteTime lastRowVisibleTime = 0;
@@ -247,6 +248,12 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
     NSInteger scrollKey = (currentSection << 16) | currentRow;
     if (scrollKey == lastVisibleRow) return;
     lastVisibleRow = scrollKey;
+    
+    // Throttle preload calls: only preload every 2nd scroll event to reduce main thread pressure
+    scrollEventCount++;
+    if (scrollEventCount % 2 != 0) {
+        return;
+    }
     
     isPreloading = YES;
     
