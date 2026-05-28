@@ -359,6 +359,66 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
     NSLog(@"[TableViewExtension/Smooth] Prefetching enabled (preload queue active)");
 }
 
+#pragma mark - Image Preloading
+
+- (void)enableImagePreloading
+{
+    // Use UITableView prefetching API (iOS 10+)
+    tableview.prefetchingEnabled = YES;
+    
+    // Set up prefetch delegate
+    tableview.prefetchDataSource = (id<UITableViewPrefetchDataSource>)self;
+    
+    NSLog(@"[TableViewExtension/Smooth] Image preloading enabled");
+}
+
+#pragma mark - Memory Warning Handling
+
+- (void)enableMemoryWarningHandling
+{
+    // Register for memory warnings
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(didReceiveMemoryWarning)
+                                                 name:UIApplicationDidReceiveMemoryWarningNotification
+                                               object:nil];
+    
+    NSLog(@"[TableViewExtension/Smooth] Memory warning handling enabled");
+}
+
+- (void)didReceiveMemoryWarning
+{
+    // Clear caches to free memory
+    if (sharedHeightCache) {
+        NSUInteger beforeCount = [sharedHeightCache count];
+        [sharedHeightCache removeAllObjects];
+        [sharedTemplateCache removeAllObjects];
+        
+        NSLog(@"[TableViewExtension/Smooth] Memory warning: cleared %ld height cache entries", beforeCount);
+    }
+}
+
+#pragma mark - Section Header/Footer Caching
+
+- (void)enableSectionHeaderFooterCachingWithHeaderHeight:(CGFloat)headerHeight
+                                             footerHeight:(CGFloat)footerHeight
+{
+    if (headerHeight > 0) {
+        tableview.estimatedSectionHeaderHeight = headerHeight;
+        NSLog(@"[TableViewExtension/Smooth] Section header caching enabled: %.1f", headerHeight);
+    }
+    
+    if (footerHeight > 0) {
+        tableview.estimatedSectionFooterHeight = footerHeight;
+        NSLog(@"[TableViewExtension/Smooth] Section footer caching enabled: %.1f", footerHeight);
+    }
+    
+    // Enable caching for headers/footers
+    if (headerHeight > 0 || footerHeight > 0) {
+        tableview.estimatedSectionHeaderHeight = headerHeight > 0 ? headerHeight : 44;
+        tableview.estimatedSectionFooterHeight = footerHeight > 0 ? footerHeight : 22;
+    }
+}
+
 #pragma mark - Performance Logging
 
 - (void)logPerformance

@@ -15,6 +15,9 @@
 - (void)setEnableHeightCaching:(id)value;
 - (void)setEstimatedRowHeight:(id)value;
 - (void)setPrefetchEnabled:(id)value;
+- (void)setImagePreloadEnabled:(id)value;
+- (void)setMemoryWarningHandling:(id)value;
+- (void)setSectionHeaderFooterCaching:(id)value;
 - (void)setSmoothScrolling:(id)value;
 - (void)invalidateHeightCache:(id)args;
 - (NSDictionary *)getCacheStats:(id)args;

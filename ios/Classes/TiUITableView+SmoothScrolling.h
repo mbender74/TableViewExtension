@@ -69,4 +69,23 @@
  */
 - (void)enablePrefetching;
 
+/**
+ * Enable image preloading for visible rows to prevent scroll jank.
+ * Proactively loads images for rows just outside the visible area.
+ */
+- (void)enableImagePreloading;
+
+/**
+ * Enable memory warning handling to clear caches when memory is low.
+ */
+- (void)enableMemoryWarningHandling;
+
+/**
+ * Enable height caching for section headers and footers.
+ * @param headerHeight Estimated header height (0 to disable)
+ * @param footerHeight Estimated footer height (0 to disable)
+ */
+- (void)enableSectionHeaderFooterCachingWithHeaderHeight:(CGFloat)headerHeight
+                                             footerHeight:(CGFloat)footerHeight;
+
 @end

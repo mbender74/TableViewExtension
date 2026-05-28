@@ -45,6 +45,32 @@
     }
 }
 
+- (void)setImagePreloadEnabled:(id)value
+{
+    BOOL enabled = [TiUtils boolValue:value];
+    if (enabled) {
+        [(TiUITableView *)[self view] enableImagePreloading];
+    }
+}
+
+- (void)setMemoryWarningHandling:(id)value
+{
+    BOOL enabled = [TiUtils boolValue:value];
+    if (enabled) {
+        [(TiUITableView *)[self view] enableMemoryWarningHandling];
+    }
+}
+
+- (void)setSectionHeaderFooterCaching:(id)value
+{
+    BOOL enabled = [TiUtils boolValue:value];
+    if (enabled) {
+        // Default header/footer heights
+        [(TiUITableView *)[self view] enableSectionHeaderFooterCachingWithHeaderHeight:44
+                                                                          footerHeight:22];
+    }
+}
+
 - (void)setSmoothScrolling:(id)value
 {
     // Convenience property: enables all optimizations
