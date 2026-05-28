@@ -19,6 +19,6 @@
 - (void)invalidateHeightCache:(id)args;
 - (NSDictionary *)getCacheStats:(id)args;
 - (NSDictionary *)getPerformanceStats:(id)args;
-- (void)logPerformance:(id)args;
+- (id)logPerformance:(id)args;
 
 @end
