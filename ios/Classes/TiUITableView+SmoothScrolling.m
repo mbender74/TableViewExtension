@@ -41,9 +41,9 @@ static NSUInteger cacheMissCount = 0;
 static CGFloat totalHeightCalculationTime = 0;
 
 // Scroll performance tracking
-static CFAbsoluteTime lastScrollTime = 0;
-static NSInteger frameCount = 0;
-static CGFloat fps = 60;
+CFAbsoluteTime lastScrollTime = 0;
+NSInteger frameCount = 0;
+CGFloat fps = 60;
 
 @implementation TiUITableView (SmoothScrolling)
 
