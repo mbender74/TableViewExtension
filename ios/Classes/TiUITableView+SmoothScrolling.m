@@ -49,6 +49,11 @@ NSInteger lastLoggedFrame = 0;
 CGFloat fps = 60;
 static const NSInteger kLogInterval = 60; // Log FPS every 60 frames instead of 30
 
+// FPS smoothing - rolling average over last N frames
+static const NSInteger kFPSSampleWindow = 60;
+static CFAbsoluteTime frameTimestamps[60];
+static NSInteger fpsSampleIndex = 0;
+
 // Preload queue configuration
 static const NSInteger kPreloadAheadRows = 10; // Rows to preload ahead
 static const NSInteger kPreloadBehindRows = 5;  // Rows to preload behind
@@ -162,21 +167,16 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
 
 - (NSString *)templateKeyForRow:(TiUITableViewRowProxy *)row
 {
-    // Generate key from row configuration properties
+    // Generate key from layout-relevant properties only
+    // Margins (top/bottom) don't affect intrinsic height, so skip them
     id heightValue = [row valueForUndefinedKey:@"height"];
     id widthValue = [row valueForUndefinedKey:@"width"];
     NSString *className = [row tableClass];
-    NSString *backgroundColor = [row valueForKey:@"backgroundColor"];
-    NSString *top = [row valueForKey:@"top"] ? [[row valueForKey:@"top"] description] : @"0";
-    NSString *bottom = [row valueForKey:@"bottom"] ? [[row valueForKey:@"bottom"] description] : @"0";
     
-    return [NSString stringWithFormat:@"%@-%@-%@-%@-%@-%@", 
+    return [NSString stringWithFormat:@"%@-%@-%@", 
              heightValue ? [heightValue description] : @"SIZE",
              widthValue ? [widthValue description] : @"AUTO",
-             className ? className : @"TiUITableView",
-             backgroundColor ? backgroundColor : @"white",
-             top,
-             bottom];
+             className ? className : @"TiUITableView"];
 }
 
 - (CGFloat)cachedHeightForRow:(TiUITableViewRowProxy *)row 
@@ -208,7 +208,8 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
     
     PerformanceTimer timer = timerStart();
     
-    CGFloat width = [row sizeWidthForDecorations:[self computeRowWidth] forceResizing:YES];
+    // Use forceResizing:NO on cache miss to avoid redundant layout calculations
+    CGFloat width = [row sizeWidthForDecorations:[self computeRowWidth] forceResizing:NO];
     CGFloat height = [row rowHeight:width];
     
     timer = timerStop(timer);
@@ -237,42 +238,57 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
     NSArray *visiblePaths = [tableview indexPathsForVisibleRows];
     if (visiblePaths.count == 0) return;
     
-    // Find the last visible row
+    // Find the last visible row (multi-section aware)
     NSIndexPath *lastPath = [visiblePaths lastObject];
-    NSInteger currentLastVisible = lastPath.row;
+    NSInteger currentSection = lastPath.section;
+    NSInteger currentRow = lastPath.row;
     
     // Only preload if we scrolled significantly
-    if (currentLastVisible == lastVisibleRow) return;
-    lastVisibleRow = currentLastVisible;
+    NSInteger scrollKey = (currentSection << 16) | currentRow;
+    if (scrollKey == lastVisibleRow) return;
+    lastVisibleRow = scrollKey;
     
     isPreloading = YES;
     
     // Preload in background queue
     dispatch_async(preloadQueue, ^{
-        // Get row count
+        // Get sections
         NSArray *sections = [(TiUITableViewProxy *)[self proxy] internalSections];
-        NSInteger totalRows = 0;
-        for (TiUITableViewSectionProxy *section in sections) {
-            totalRows += [section rows] count;
+        if (sections.count == 0) {
+            isPreloading = NO;
+            return;
         }
         
-        // Preload rows ahead
-        for (NSInteger i = 1; i <= kPreloadAheadRows && (currentLastVisible + i) < totalRows; i++) {
-            NSInteger rowIdx = currentLastVisible + i;
-            NSIndexPath *path = [NSIndexPath indexPathForRow:rowIdx inSection:0];
-            TiUITableViewRowProxy *row = [self rowForIndexPath:path];
-            if (row) {
-                [self cachedHeightForRow:row indexPath:path];
+        // Preload rows ahead (same section, then next sections)
+        NSInteger aheadCount = 0;
+        for (NSInteger s = currentSection; s < sections.count && aheadCount < kPreloadAheadRows; s++) {
+            TiUITableViewSectionProxy *section = sections[s];
+            NSInteger sectionRowCount = [section rows] count;
+            
+            for (NSInteger r = (s == currentSection ? currentRow + 1 : 0); r < sectionRowCount && aheadCount < kPreloadAheadRows; r++) {
+                NSIndexPath *path = [NSIndexPath indexPathForRow:r inSection:s];
+                TiUITableViewRowProxy *row = [self rowForIndexPath:path];
+                if (row) {
+                    [self cachedHeightForRow:row indexPath:path];
+                }
+                aheadCount++;
             }
         }
         
-        // Preload rows behind (for scrolling back)
-        for (NSInteger i = 1; i <= kPreloadBehindRows && (currentLastVisible - i) >= 0; i++) {
-            NSInteger rowIdx = currentLastVisible - i;
-            NSIndexPath *path = [NSIndexPath indexPathForRow:rowIdx inSection:0];
-            TiUITableViewRowProxy *row = [self rowForIndexPath:path];
-            if (row) {
-                [self cachedHeightForRow:row indexPath:path];
+        // Preload rows behind (same section, then previous sections)
+        NSInteger behindCount = 0;
+        for (NSInteger s = currentSection; s >= 0 && behindCount < kPreloadBehindRows; s--) {
+            TiUITableViewSectionProxy *section = sections[s];
+            NSArray *rows = [section rows];
+            NSInteger sectionRowCount = rows.count;
+            
+            for (NSInteger r = (s == currentSection ? currentRow - 1 : sectionRowCount - 1); r >= 0 && behindCount < kPreloadBehindRows; r--) {
+                NSIndexPath *path = [NSIndexPath indexPathForRow:r inSection:s];
+                TiUITableViewRowProxy *row = [self rowForIndexPath:path];
+                if (row) {
+                    [self cachedHeightForRow:row indexPath:path];
+                }
+                behindCount++;
             }
         }
         
@@ -368,6 +384,11 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
     frameCount++;
     CFAbsoluteTime currentTime = CFAbsoluteTimeGetCurrent();
     
+    // Store frame timestamp for rolling FPS calculation
+    frameTimestamps[fpsSampleIndex % kFPSSampleWindow] = currentTime;
+    fpsSampleIndex++;
+    
+    // Calculate rolling average FPS over last N frames
     if (lastScrollTime > 0) {
         CGFloat delta = (currentTime - lastScrollTime) * 1000.0;
         if (delta > 0) {
@@ -376,15 +397,26 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
     }
     lastScrollTime = currentTime;
     
+    // Calculate smoothed FPS from rolling window
+    if (fpsSampleIndex >= kFPSSampleWindow) {
+        CFAbsoluteTime oldestTime = frameTimestamps[(fpsSampleIndex - kFPSSampleWindow) % kFPSSampleWindow];
+        CFAbsoluteTime newestTime = frameTimestamps[(fpsSampleIndex - 1) % kFPSSampleWindow];
+        CGFloat totalTime = (newestTime - oldestTime) * 1000.0;
+        if (totalTime > 0) {
+            fps = (CGFloat)(kFPSSampleWindow - 1) / (totalTime / 1000.0);
+        }
+    }
+    
     // Trigger preload queue
     [self preloadRowHeightsIfNeeded];
     
     // Log FPS every 60 frames (reduced from 30)
     if (frameCount - lastLoggedFrame >= kLogInterval) {
         lastLoggedFrame = frameCount;
-        NSLog(@"[TableViewExtension/Smooth] Scroll FPS: %.1f | Cache: %ld/%ld (%.0f%% hit rate)", 
-             fps, (long)cacheHitCount, (long)(cacheHitCount + cacheMissCount), 
-             (cacheHitCount + cacheMissCount) > 0 ? (CGFloat)cacheHitCount / (cacheHitCount + cacheMissCount) * 100 : 0);
+        NSUInteger totalRequests = cacheHitCount + cacheMissCount;
+        CGFloat hitRate = totalRequests > 0 ? (CGFloat)cacheHitCount / totalRequests * 100.0 : 0;
+        NSLog(@"[TableViewExtension/Smooth] Scroll FPS: %.1f (smoothed) | Cache: %ld/%ld (%.0f%% hit rate)", 
+             fps, (long)cacheHitCount, (long)totalRequests, hitRate);
     }
 }
 
