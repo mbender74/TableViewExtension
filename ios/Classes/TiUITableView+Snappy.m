@@ -90,9 +90,9 @@ typedef struct {
         //CGFloat decelerationRate = UIScrollViewDecelerationRateFast +(UIScrollViewDecelerationRateNormal - UIScrollViewDecelerationRateFast) * .52;
         [table setValue:[NSValue valueWithCGSize:CGSizeMake(decelerationRate,decelerationRate)] forKey:@"_decelerationFactor"];
     }
-    
-    
-    
+
+
+
 //////      //0.993840
 //////
 //////      //0.995160
@@ -110,9 +110,9 @@ typedef struct {
 //
 //    }
 
-    
-    
-    
+
+
+
 }
 
 
@@ -142,7 +142,7 @@ typedef struct {
 
     CGPoint translation = [sender translationInView:self.superview];
     CGPoint velocity = [sender velocityInView:self.superview];
-    
+
     TiPoint *translationPoint = [[TiPoint alloc] initWithPoint:translation];
     TiPoint *velocityPoint = [[TiPoint alloc] initWithPoint:velocity];
     NSDictionary *args = [NSDictionary dictionaryWithObjectsAndKeys:
@@ -151,7 +151,7 @@ typedef struct {
     if([self.proxy _hasListeners:@"pan"]){
         [self.proxy fireEvent:@"pan" withObject:args];
     }
-    
+
     if(sender.state == UIGestureRecognizerStateEnded &&
        [self.proxy _hasListeners:@"panend"]){
         [self.proxy fireEvent:@"panend"];
@@ -162,18 +162,18 @@ typedef struct {
 {
     ENSURE_SINGLE_ARG(value, NSNumber);
     BOOL value_ = [value boolValue];
-    
+
     if(value_){
         for(UIGestureRecognizer *gesure in self.gestureRecognizers){
             if([gesure isKindOfClass:[UIPanGestureRecognizer class]]){
                 return;
             }
         }
-        
+
         UIPanGestureRecognizer *panGesture =[[UIPanGestureRecognizer alloc] initWithTarget:self
                                                                                     action:@selector(handlePanGesture:)];
         [self addGestureRecognizer:panGesture];
-        
+
         if(self.tag & RECOGNIZE_SIMULTANEOUSLY_PAN)
         {
             panGesture.delegate = self;
@@ -186,9 +186,9 @@ typedef struct {
                 break;
             }
         }
-        
+
         panGesture.delegate = nil;
-        
+
         if(panGesture){
             [self removeGestureRecognizer:panGesture];
         }
@@ -275,7 +275,7 @@ typedef struct {
              TiUITableViewRowProxy *oldrow = [[row.section rows] objectAtIndex:0];
     [self insertRow:row before:oldrow];
 
-    
+
              NSIndexPath *path = [NSIndexPath indexPathForRow:row.row inSection:0];
              CGFloat cellheight;
 
@@ -298,7 +298,7 @@ typedef struct {
 
 
     //  if (![self isSearchStarted]) {
-         
+
       //  dispatch_async(dispatch_get_main_queue(), ^{
 
           [UIView performWithoutAnimation:^{
@@ -313,7 +313,7 @@ typedef struct {
               [self->tableview setContentOffset:contentOffet];
               [self->tableview insertRowsAtIndexPaths:[NSArray arrayWithObject:path] withRowAnimation:UITableViewRowAnimationNone];
            //   [tableview endUpdates];
-            
+
           }];
 //                  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.001 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
 //                       [(TiUITableViewProxy *)[self proxy] replaceValue:NUMBOOL(NO) forKey:@"isLoading" notification:NO];
@@ -372,14 +372,14 @@ typedef struct {
 
 -(void)setContentInset:(id)value withObject:(id)props
 {
-    
+
     UIEdgeInsets insets = [TiUtils contentInsets:value];
     UIEdgeInsets insetsScroll = [TiUtils contentInsets:value];
 
 
-    
+
    // self.contentInsets = value;
-    
+
     int newoffset = [TiUtils intValue:@"newoffset" properties:props def:0];
 
     int safeArea = [TiUtils intValue:@"safearea" properties:props def:0];
@@ -388,32 +388,32 @@ typedef struct {
     BOOL nobottom = [TiUtils boolValue:@"nobottom" properties:props def:NO];
     BOOL noOffset = [TiUtils boolValue:@"noOffset" properties:props def:NO];
 
-    
+
     void (^setInset)(void) = ^{
-        
+
         [self->tableview setContentInset:insets];
         [self->tableview setScrollIndicatorInsets:insets];
         tableContentInsets = [self->tableview contentInset];
-        
-        
+
+
         CGFloat topInset = insets.top;
         CGFloat bottomInset = insets.bottom;
         CGFloat leftInset = insets.left;
         CGFloat rightInset = insets.right;
 
-        
-        
+
+
         NSMutableDictionary *contentDictionary = [[NSMutableDictionary alloc]init];
         [contentDictionary setValue:[NSNumber numberWithFloat:topInset] forKey:@"top"];
         [contentDictionary setValue:[NSNumber numberWithFloat:bottomInset] forKey:@"bottom"];
         [contentDictionary setValue:[NSNumber numberWithFloat:leftInset] forKey:@"left"];
         [contentDictionary setValue:[NSNumber numberWithFloat:rightInset] forKey:@"right"];
-        
-        
+
+
         [self.proxy replaceValue:contentDictionary
                     forKey:@"contentInsets"
               notification:NO];
-        
+
         if (noOffset == NO){
             if (nobottom == NO){
                 CGSize svContentSize = self->tableview.contentSize;
@@ -452,8 +452,8 @@ typedef struct {
 
 - (void)autoSnappping:(CGPoint)velocity withTargetOffset:(CGPoint *)targetOffset
 {
-     
-    
+
+
 //    NSLog(@"[ERROR] autoSnappping Module: %f %f",myvelocity.y,targetOffset->memory.y);
 //    NSLog(@"[ERROR] tableview.contentSize.height Module: %f",tableview.contentSize.height);
 //    NSLog(@"[ERROR] tableview.frame.size.height Module: %f",tableview.frame.size.height);
@@ -463,20 +463,20 @@ typedef struct {
     TableViewExtensionLog(@"autoSnappping velocity: %f, targetOffset: %f", velocity.y, targetOffset->y);
 
     CGPoint *mytargetOffset = targetOffset;
-    
+
     if (targetOffset->y >= (tableview.contentSize.height - tableview.frame.size.height - tableview.contentInset.top - tableview.contentInset.bottom)) {
       //  NSLog(@"[ERROR] autoSnappping return: %@ %@",CGPointEqualToPoint(velocity, CGPointZero), (targetOffset->memory.y >= tableview.contentSize.height - tableview.frame.size.height - tableview.contentInset.top - tableview.contentInset.bottom));
 
         return;
     }
-    
+
     NSIndexPath *indexPath = nil;
     indexPath = [tableview indexPathForRowAtPoint:*mytargetOffset];
 
     if (indexPath != nil){
         CGPoint *offset = targetOffset;
         CGRect cellRect = [tableview rectForRowAtIndexPath:indexPath];
-        
+
         CGFloat targetOffsetYDif = offset->y - CGRectGetMinY(cellRect);
         if (targetOffsetYDif < kRoundingHeight) {
             offset->y = CGRectGetMinY(cellRect) - tableview.contentInset.top;
@@ -495,8 +495,8 @@ typedef struct {
     else {
         return;
     }
-    
-    
+
+
 }
 //
 //
@@ -507,73 +507,45 @@ typedef struct {
 
 - (void)tableView:(UITableView *)thisTableView willDisplayCell:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath
 {
-    dispatch_async(dispatch_get_main_queue(), ^{
-
     NSIndexPath *index = indexPath;
     TiUITableViewRowProxy *row = [self rowForIndexPath:index];
-
-
-   // if (![TiUtils boolValue:[row valueForUndefinedKey:@"layoutDone"] def:NO]) {
-       // NSLog(@"[ERROR] willDisplayCell Module:");
-
-//        TiThreadPerformOnMainThread(
-//            ^{
-            
-                NSString *color = [row valueForKey:@"backgroundColor"];
-                if (color == nil) {
-                  color = [self.proxy valueForKey:@"rowBackgroundColor"];
-                  if (color == nil) {
-                    color = [self.proxy valueForKey:@"backgroundColor"];
-                  }
-                }
-                UIColor *cellColor = [TiUtils colorValue:color].color;
-                if (cellColor == nil) {
-                  cellColor = [UIColor whiteColor];
-                }
-                cell.backgroundColor = cellColor;
-             //   [cell layoutIfNeeded];
-
-//            },
-//            NO);
-        
-       
-       // [row replaceValue:NUMBOOL(YES) forKey:@"layoutDone" notification:NO];
-  //  }
-
     
+    // Set background color (no dispatch needed - already on main thread)
+    NSString *color = [row valueForKey:@"backgroundColor"];
+    if (color == nil) {
+        color = [self.proxy valueForKey:@"rowBackgroundColor"];
+        if (color == nil) {
+            color = [self.proxy valueForKey:@"backgroundColor"];
+        }
+    }
+    UIColor *cellColor = [TiUtils colorValue:color].color;
+    if (cellColor == nil) {
+        cellColor = [UIColor whiteColor];
+    }
+    cell.backgroundColor = cellColor;
+    
+    // Fire rowvisible event
     if ([[self proxy] _hasListeners:@"rowvisible"]) {
-       
-     //   dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
-        
         NSInteger rowTopOffset = [row getTopOffset:nil];
         NSInteger rowVisible = [row isVisible:nil];
-
-      
-
-                  NSInteger sectionIdx = [index section];
-                  NSArray *sections = [(TiUITableViewProxy *)[self proxy] internalSections];
-                  TiUITableViewSectionProxy *section = [self sectionForIndex:sectionIdx];
-                 
-                  
-                  NSInteger dataIndex = [self rowIndexForIndexPath:index andSections:sections];
-                                   
-                  
-                  NSMutableDictionary *eventObject = [NSMutableDictionary dictionaryWithObjectsAndKeys:
-                                                                              section, @"section",
-                                                                          NUMINTEGER(dataIndex), @"index",
-                                                      NUMINTEGER(rowTopOffset), @"topOffset",
-
-                                                      row, @"row",
-
-                                                      NUMINTEGER(rowVisible), @"isVisible",
-                                                                          row, @"rowData",
-                                                                          nil];
-                  
-                  [[self proxy] fireEvent:@"rowvisible" withObject:eventObject propagate:NO];
-       // });
-}
-    });
-
+        
+        NSInteger sectionIdx = [index section];
+        NSArray *sections = [(TiUITableViewProxy *)[self proxy] internalSections];
+        TiUITableViewSectionProxy *section = [self sectionForIndex:sectionIdx];
+        
+        NSInteger dataIndex = [self rowIndexForIndexPath:index andSections:sections];
+        
+        NSMutableDictionary *eventObject = [NSMutableDictionary dictionaryWithObjectsAndKeys:
+            section, @"section",
+            NUMINTEGER(dataIndex), @"index",
+            NUMINTEGER(rowTopOffset), @"topOffset",
+            row, @"row",
+            NUMINTEGER(rowVisible), @"isVisible",
+            row, @"rowData",
+            nil];
+        
+        [[self proxy] fireEvent:@"rowvisible" withObject:eventObject propagate:NO];
+    }
 }
 
 
@@ -629,42 +601,28 @@ typedef struct {
 
 - (void)tableView:(UITableView *)thisTableView didEndDisplayingCell:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath
 {
-
-    dispatch_async(dispatch_get_main_queue(), ^{
     if ([[self proxy] _hasListeners:@"rownotvisible"]) {
-       //
-      //  dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
-
         NSIndexPath *index = indexPath;
         TiUITableViewRowProxy *row = [self rowForIndexPath:index];
-
         
-            NSInteger rowTopOffset = [row getTopOffset:nil];
-
-
-                  NSInteger sectionIdx = [index section];
-                  NSArray *sections = [(TiUITableViewProxy *)[self proxy] internalSections];
-                  TiUITableViewSectionProxy *section = [self sectionForIndex:sectionIdx];
-                 
-                  
-                  NSInteger dataIndex = [self rowIndexForIndexPath:index andSections:sections];
-                                   
-                  
-                  NSMutableDictionary *eventObject = [NSMutableDictionary dictionaryWithObjectsAndKeys:
-                                                                              section, @"section",
-                                                                          NUMINTEGER(dataIndex), @"index",
-                                                      NUMINTEGER(rowTopOffset), @"topOffset",
-
-                                                      row, @"row",
-                                                                          row, @"rowData",
-                                                                          nil];
-                  
-                  [[self proxy] fireEvent:@"rownotvisible" withObject:eventObject propagate:NO];
-      //  });
+        NSInteger rowTopOffset = [row getTopOffset:nil];
+        
+        NSInteger sectionIdx = [index section];
+        NSArray *sections = [(TiUITableViewProxy *)[self proxy] internalSections];
+        TiUITableViewSectionProxy *section = [self sectionForIndex:sectionIdx];
+        
+        NSInteger dataIndex = [self rowIndexForIndexPath:index andSections:sections];
+        
+        NSMutableDictionary *eventObject = [NSMutableDictionary dictionaryWithObjectsAndKeys:
+            section, @"section",
+            NUMINTEGER(dataIndex), @"index",
+            NUMINTEGER(rowTopOffset), @"topOffset",
+            row, @"row",
+            row, @"rowData",
+            nil];
+        
+        [[self proxy] fireEvent:@"rownotvisible" withObject:eventObject propagate:NO];
     }
-
-        });
-    
 }
 
 
