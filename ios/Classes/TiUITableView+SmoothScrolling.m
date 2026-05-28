@@ -366,10 +366,68 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
     // Use UITableView prefetching API (iOS 10+)
     tableview.prefetchingEnabled = YES;
     
-    // Set up prefetch delegate
+    // Set up prefetch delegate for complex layouts
     tableview.prefetchDataSource = (id<UITableViewPrefetchDataSource>)self;
     
-    NSLog(@"[TableViewExtension/Smooth] Image preloading enabled");
+    // Also enable background image loading for nested views
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
+        // Preload images from visible rows
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(preloadImagesForRow:)
+                                                     name:UITableViewDataSourceMetricBlockNotification
+                                                   object:nil];
+    });
+    
+    NSLog(@"[TableViewExtension/Smooth] Image preloading enabled (including nested views)");
+}
+
+- (void)preloadImagesForRow:(NSNotification *)notification
+{
+    // Extract images from complex row layouts
+    NSArray *visiblePaths = [tableview indexPathsForVisibleRows];
+    
+    for (NSIndexPath *path in visiblePaths) {
+        TiUITableViewRowProxy *row = [self rowForIndexPath:path];
+        if (row) {
+            // Get row view hierarchy
+            NSArray *rowViews = [row valueForUndefinedKey:@"views"];
+            if (rowViews) {
+                [self preloadImagesFromViews:rowViews];
+            }
+        }
+    }
+}
+
+- (void)preloadImagesFromViews:(NSArray *)views
+{
+    for (id view in views) {
+        // Check if it's an ImageView
+        if ([view isKindOfClass:[Ti.UI.ImageView class]] || [view isKindOfClass:[TiUIImageView class]]) {
+            id imageValue = [view valueForUndefinedKey:@"image"];
+            if (imageValue) {
+                // Force image load into memory
+                if ([imageValue isKindOfClass:[NSString class]]) {
+                    UIImage *image = [UIImage imageNamed:imageValue];
+                    if (image) {
+                        // Keep in memory cache
+                        [UIImage imageNamed:imageValue];
+                    }
+                }
+            }
+            
+            // Check nested views
+            NSArray *subviews = [view valueForUndefinedKey:@"subviews"];
+            if (subviews) {
+                [self preloadImagesFromViews:subviews];
+            }
+        }
+        
+        // Check for nested views
+        NSArray *subviews = [view valueForUndefinedKey:@"subviews"];
+        if (subviews) {
+            [self preloadImagesFromViews:subviews];
+        }
+    }
 }
 
 #pragma mark - Memory Warning Handling
