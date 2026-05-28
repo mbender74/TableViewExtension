@@ -15,6 +15,7 @@
 #import "TiUITableViewProxy.h"
 #import "TiUITableViewProxy+Snappy.h"
 #import "TiUITableView+Snappy.h"
+#import "TiUITableView+SmoothScrolling.h"
 
 @interface TiUITableViewProxy (Snappy)
 //-(NSInteger)isVisible:(id)args;
@@ -81,6 +82,12 @@ USE_VIEW_FOR_CONTENT_HEIGHT
 {
     // Set estimatedRowHeight to 0 for consistent height calculation (SDK behavior)
     [(TiUITableView *)[self view] setEstimatedRowHeight:0];
+}
+
+- (id)logPerformance:(id)args
+{
+    [(TiUITableView *)[self view] logPerformance];
+    return nil;
 }
 
 //-(void)appendRowBeforeRow:(id)newRow
