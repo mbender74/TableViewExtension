@@ -17,10 +17,9 @@
 #import "TiUITableView+Snappy.h"
 #import "TiUITableView+SmoothScrolling.h"
 
-// Access FPS from SmoothScrolling
-extern CFAbsoluteTime lastScrollTime;
-extern NSInteger frameCount;
-extern CGFloat fps;
+// FPS tracking in proxy
+static CFAbsoluteTime proxyLastScrollTime = 0;
+static CGFloat proxyFPS = 60;
 
 @interface TiUITableViewProxy (Snappy)
 //-(NSInteger)isVisible:(id)args;
@@ -93,9 +92,18 @@ USE_VIEW_FOR_CONTENT_HEIGHT
 {
     TiUITableView *table = (TiUITableView *)[self view];
     
+    // Calculate FPS based on time since last scroll event
+    CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+    if (proxyLastScrollTime > 0) {
+        CGFloat delta = (now - proxyLastScrollTime) * 1000.0;
+        if (delta > 0) {
+            proxyFPS = 1000.0 / delta;
+        }
+    }
+    proxyLastScrollTime = now;
+    
     NSLog(@"[TableViewExtension/Smooth] === Performance Report ===");
-    NSLog(@"[TableViewExtension/Smooth] Scroll FPS: %.1f", fps);
-    NSLog(@"[TableViewExtension/Smooth] Frame Count: %ld", (long)frameCount);
+    NSLog(@"[TableViewExtension/Smooth] Scroll FPS: %.1f", proxyFPS);
     NSLog(@"[TableViewExtension/Smooth] Content Size: {%f, %f}", 
          [table tableView].contentSize.width, [table tableView].contentSize.height);
     NSLog(@"[TableViewExtension/Smooth] Content Offset: {%f, %f}",
