@@ -7,6 +7,10 @@
 #import "DeMarcbenderTableviewextensionModule.h"
 #import "TiUITableView.h"
 
+// Cell reuse statistics (shared across files)
+extern NSUInteger cellReuseCount;
+extern NSUInteger cellCreateCount;
+
 @interface TiUITableView (SmoothScrolling)
 
 #pragma mark - Height Caching

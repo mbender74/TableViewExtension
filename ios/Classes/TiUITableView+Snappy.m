@@ -10,6 +10,7 @@
 
 #import "TiUITableView.h"
 #import "TiUITableView+Snappy.h"
+#import "TiUITableView+SmoothScrolling.h"
 #import "TiUITableViewSectionProxy.h"
 #import "TiUITableViewRowProxy.h"
 #import "TiUITableViewRowProxy+WithVisibility.h"
@@ -18,10 +19,6 @@
 static CFAbsoluteTime lastRowVisibleTime = 0;
 static CFAbsoluteTime lastRowNotVisibleTime = 0;
 static const CGFloat kRowVisibleThrottleInterval = 0.032; // ~30fps (reduced from 60fps to prevent jank)
-
-// Cell reuse statistics (defined in SmoothScrolling.m)
-extern NSUInteger cellReuseCount;
-extern NSUInteger cellCreateCount;
 
 // Debug logging macro
 #ifndef DEBUG
