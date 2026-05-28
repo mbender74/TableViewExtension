@@ -43,8 +43,8 @@ static NSUInteger templateHitCount = 0; // Template cache hits
 static CGFloat totalHeightCalculationTime = 0;
 
 // Cell reuse statistics (visible to other files)
-NSUInteger cellReuseCount = 0;
-NSUInteger cellCreateCount = 0;
+NSUInteger cellReuseCount;
+NSUInteger cellCreateCount;
 
 // Scroll performance tracking - only log every N frames
 CFAbsoluteTime lastScrollTime = 0;
