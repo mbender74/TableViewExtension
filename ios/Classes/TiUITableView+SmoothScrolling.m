@@ -180,7 +180,7 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
              className ? className : @"TiUITableView"];
 }
 
-- (CGFloat)cachedHeightForRow:(TiUITableViewRowProxy *)row 
+- (CGFloat)cachedHeightForRow:(TiUITableViewRowProxy *)row
                    indexPath:(NSIndexPath *)indexPath
 {
     // First try template cache (configuration-based)
@@ -207,6 +207,21 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
     
     cacheMissCount++;
     
+    // Check if row has a fixed height set (not SIZE or FILL)
+    id heightValue = [row valueForUndefinedKey:@"height"];
+    NSString *heightStr = heightValue ? [heightValue description] : @"";
+    
+    // If height is a fixed number (not "SIZE" or "FILL"), use it directly
+    if (![heightStr isEqualToString:@"SIZE"] && ![heightStr isEqualToString:@"FILL"] && ![heightStr isEqualToString:@""]) {
+        CGFloat fixedHeight = [heightValue floatValue];
+        if (fixedHeight > 0) {
+            // Store in cache for future access
+            [sharedHeightCache setObject:@(fixedHeight) forKey:key cost:sizeof(CGFloat)];
+            [sharedTemplateCache setObject:@(fixedHeight) forKey:templateKey cost:sizeof(CGFloat)];
+            return fixedHeight;
+        }
+    }
+    
     PerformanceTimer timer = timerStart();
     
     // Use forceResizing:NO on cache miss to avoid redundant layout calculations
@@ -222,7 +237,7 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
     
     // Only log slow calculations (>10ms)
     if (timer.durationMs > 10.0) {
-        NSLog(@"[TableViewExtension/Smooth] Slow height calc: row %ld = %.1fpt in %.2fms", 
+        NSLog(@"[TableViewExtension/Smooth] Slow height calc: row %ld = %.1fpt in %.2fms",
               (long)indexPath.row, height, timer.durationMs);
     }
     
@@ -366,6 +381,18 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
 - (CGFloat)tableView:(UITableView *)ourTableView heightForRowAtIndexPath:(NSIndexPath *)indexPath
 {
     TiUITableViewRowProxy *row = [self rowForIndexPath:indexPath];
+    
+    // Check if row has a fixed height set (not SIZE or FILL)
+    id heightValue = [row valueForUndefinedKey:@"height"];
+    NSString *heightStr = heightValue ? [heightValue description] : @"";
+    
+    // If height is a fixed number, use it directly - skip all caching overhead
+    if (![heightStr isEqualToString:@"SIZE"] && ![heightStr isEqualToString:@"FILL"] && ![heightStr isEqualToString:@""]) {
+        CGFloat fixedHeight = [heightValue floatValue];
+        if (fixedHeight > 0) {
+            return fixedHeight;
+        }
+    }
     
     if (sharedHeightCache != nil) {
         return [self cachedHeightForRow:row indexPath:indexPath];
