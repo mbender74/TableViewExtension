@@ -40,6 +40,11 @@ static NSUInteger cacheHitCount = 0;
 static NSUInteger cacheMissCount = 0;
 static CGFloat totalHeightCalculationTime = 0;
 
+// Scroll performance tracking
+static CFAbsoluteTime lastScrollTime = 0;
+static NSInteger frameCount = 0;
+static CGFloat fps = 60;
+
 @implementation TiUITableView (SmoothScrolling)
 
 #pragma mark - Height Caching
@@ -53,8 +58,8 @@ static CGFloat totalHeightCalculationTime = 0;
         cacheHitCount = 0;
         cacheMissCount = 0;
         totalHeightCalculationTime = 0;
-        NSLog(@"Height cache initialized (limit: 500 entries, 10MB)");
-        NSLog(@"Performance tracking enabled");
+        NSLog(@"[TableViewExtension/Smooth] Height cache initialized (limit: 500 entries, 10MB)");
+        NSLog(@"[TableViewExtension/Smooth] Performance tracking enabled");
     }
 }
 
@@ -62,7 +67,7 @@ static CGFloat totalHeightCalculationTime = 0;
 {
     if (sharedHeightCache) {
         [sharedHeightCache removeAllObjects];
-        NSLog(@"Height cache cleared");
+        NSLog(@"[TableViewExtension/Smooth] Height cache cleared");
     }
 }
 
@@ -71,7 +76,8 @@ static CGFloat totalHeightCalculationTime = 0;
     if (sharedHeightCache) {
         NSString *key = [self cacheKeyForIndexPath:indexPath];
         [sharedHeightCache removeObjectForKey:key];
-        NSLog(@"Height cache invalidated for row %ld section %ld", (long)indexPath.row, (long)indexPath.section);
+        NSLog(@"[TableViewExtension/Smooth] Height cache invalidated for row %ld section %ld", 
+              (long)indexPath.row, (long)indexPath.section);
     }
 }
 
@@ -93,7 +99,7 @@ static CGFloat totalHeightCalculationTime = 0;
     CGFloat hitRate = totalRequests > 0 ? (CGFloat)cacheHitCount / totalRequests * 100.0 : 0;
     CGFloat avgTime = cacheMissCount > 0 ? totalHeightCalculationTime / cacheMissCount : 0;
     
-    NSLog(@"Cache stats: %ld hits, %ld misses, %.1f%% hit rate, avg %.2fms/calc",
+    NSLog(@"[TableViewExtension/Smooth] Cache stats: %ld hits, %ld misses, %.1f%% hit rate, avg %.2fms/calc",
              (long)cacheHitCount, (long)cacheMissCount, hitRate, avgTime);
     
     return @{
@@ -109,7 +115,6 @@ static CGFloat totalHeightCalculationTime = 0;
 
 - (NSString *)cacheKeyForIndexPath:(NSIndexPath *)indexPath
 {
-    // Get the row proxy to include height info in key
     TiUITableViewRowProxy *row = [self rowForIndexPath:indexPath];
     id heightValue = [row valueForUndefinedKey:@"height"];
     NSString *heightStr = heightValue ? [heightValue description] : @"SIZE";
@@ -126,26 +131,26 @@ static CGFloat totalHeightCalculationTime = 0;
     
     if (cached) {
         cacheHitCount++;
-        NSLog(@"Cache HIT for row %ld: %.1f", (long)indexPath.row, cached.floatValue);
+        NSLog(@"[TableViewExtension/Smooth] Cache HIT for row %ld: %.1f", 
+              (long)indexPath.row, cached.floatValue);
         return cached.floatValue;
     }
     
     cacheMissCount++;
-    NSLog(@"Cache MISS for row %ld, calculating...", (long)indexPath.row);
+    NSLog(@"[TableViewExtension/Smooth] Cache MISS for row %ld, calculating...", 
+          (long)indexPath.row);
     
-    // Measure height calculation time
     PerformanceTimer timer = timerStart();
     
-    // Calculate height
     CGFloat width = [row sizeWidthForDecorations:[self computeRowWidth] forceResizing:YES];
     CGFloat height = [row rowHeight:width];
     
     timer = timerStop(timer);
     totalHeightCalculationTime += timer.durationMs;
     
-    NSLog(@"Height calculated: %.1fpt in %.2fms", height, timer.durationMs);
+    NSLog(@"[TableViewExtension/Smooth] Height calculated: %.1fpt in %.2fms", 
+          height, timer.durationMs);
     
-    // Store in cache
     [sharedHeightCache setObject:@(height) forKey:key cost:sizeof(CGFloat)];
     
     return height;
@@ -159,11 +164,8 @@ static CGFloat totalHeightCalculationTime = 0;
         tableview.estimatedRowHeight = estimatedHeight;
         tableview.estimatedSectionHeaderHeight = estimatedHeight * 0.5;
         tableview.estimatedSectionFooterHeight = estimatedHeight * 0.3;
-        
-        // Use automatic dimension for rows with Ti.UI.SIZE
         tableview.rowHeight = UITableViewAutomaticDimension;
-        
-        NSLog(@"Estimated heights enabled: %.1f", estimatedHeight);
+        NSLog(@"[TableViewExtension/Smooth] Estimated heights enabled: %.1f", estimatedHeight);
     }
 }
 
@@ -171,75 +173,10 @@ static CGFloat totalHeightCalculationTime = 0;
 
 - (void)enablePrefetching
 {
-    // Prefetching is handled by iOS UITableView automatically
-    // We just need to make sure our height calculation is fast
-    NSLog(@"Prefetching enabled (uses cached heights)");
+    NSLog(@"[TableViewExtension/Smooth] Prefetching enabled (uses cached heights)");
 }
 
-@end
-
-// Override heightForRowAtIndexPath to use cache
-@implementation TiUITableView (SmoothScrollingHeightOverride)
-
-- (CGFloat)tableView:(UITableView *)ourTableView heightForRowAtIndexPath:(NSIndexPath *)indexPath
-{
-    TiUITableViewRowProxy *row = [self rowForIndexPath:indexPath];
-    
-    // Try cache first
-    if (sharedHeightCache != nil) {
-        return [self cachedHeightForRow:row indexPath:indexPath];
-    }
-    
-    // Fallback to original calculation
-    CGFloat width = [row sizeWidthForDecorations:[self computeRowWidth] forceResizing:YES];
-    CGFloat height = [row rowHeight:width];
-    height = [self tableRowHeight:height];
-    return height < 1 ? tableview.rowHeight : height;
-}
-
-@end
-
-// Scroll performance monitoring
-@implementation TiUITableView (SmoothScrollingPerformance)
-
-static CFAbsoluteTime lastScrollTime = 0;
-static NSInteger frameCount = 0;
-static CGFloat fps = 60;
-
-- (void)scrollViewDidScroll:(UIScrollView *)scrollView
-{
-    // Call super implementation first
-    if ([self.nextResponder respondsToSelector:@selector(scrollViewDidScroll:)]) {
-        [self.nextResponder scrollViewDidScroll:scrollView];
-    }
-    
-    // Track scroll performance
-    frameCount++;
-    CFAbsoluteTime currentTime = CFAbsoluteTimeGetCurrent();
-    
-    if (lastScrollTime > 0) {
-        CGFloat delta = (currentTime - lastScrollTime) * 1000.0; // ms
-        if (delta > 0) {
-            fps = 1000.0 / delta;
-        }
-    }
-    lastScrollTime = currentTime;
-    
-    // Log performance every 30 frames
-    if (frameCount % 30 == 0) {
-        NSLog(@"Scroll FPS: %.1f | Cache: %ld entries", 
-                 fps, (long)[sharedHeightCache count]);
-    }
-}
-
-- (NSDictionary *)getPerformanceStats
-{
-    return @{
-        @"fps": @(fps),
-        @"frameCount": @(frameCount),
-        @"cacheEntries": @(sharedHeightCache ? [sharedHeightCache count] : @0)
-    };
-}
+#pragma mark - Performance Logging
 
 - (void)logPerformance
 {
@@ -256,6 +193,62 @@ static CGFloat fps = 60;
          (long)[sharedHeightCache count], 
          (double)[sharedHeightCache totalCost] / 1024.0);
     NSLog(@"[TableViewExtension/Smooth] ============================");
+}
+
+- (NSDictionary *)getPerformanceStats
+{
+    return @{
+        @"fps": @(fps),
+        @"frameCount": @(frameCount),
+        @"cacheEntries": @(sharedHeightCache ? [sharedHeightCache count] : @0)
+    };
+}
+
+@end
+
+// Override heightForRowAtIndexPath to use cache
+@implementation TiUITableView (SmoothScrollingHeightOverride)
+
+- (CGFloat)tableView:(UITableView *)ourTableView heightForRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    TiUITableViewRowProxy *row = [self rowForIndexPath:indexPath];
+    
+    if (sharedHeightCache != nil) {
+        return [self cachedHeightForRow:row indexPath:indexPath];
+    }
+    
+    CGFloat width = [row sizeWidthForDecorations:[self computeRowWidth] forceResizing:YES];
+    CGFloat height = [row rowHeight:width];
+    height = [self tableRowHeight:height];
+    return height < 1 ? tableview.rowHeight : height;
+}
+
+@end
+
+// Scroll performance monitoring
+@implementation TiUITableView (SmoothScrollingPerformance)
+
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView
+{
+    if ([self.nextResponder respondsToSelector:@selector(scrollViewDidScroll:)]) {
+        [self.nextResponder scrollViewDidScroll:scrollView];
+    }
+    
+    frameCount++;
+    CFAbsoluteTime currentTime = CFAbsoluteTimeGetCurrent();
+    
+    if (lastScrollTime > 0) {
+        CGFloat delta = (currentTime - lastScrollTime) * 1000.0;
+        if (delta > 0) {
+            fps = 1000.0 / delta;
+        }
+    }
+    lastScrollTime = currentTime;
+    
+    if (frameCount % 30 == 0) {
+        NSLog(@"[TableViewExtension/Smooth] Scroll FPS: %.1f | Cache: %ld entries", 
+             fps, (long)[sharedHeightCache count]);
+    }
 }
 
 @end
