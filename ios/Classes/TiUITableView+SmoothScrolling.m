@@ -49,6 +49,17 @@ NSInteger lastLoggedFrame = 0;
 CGFloat fps = 60;
 static const NSInteger kLogInterval = 60; // Log FPS every 60 frames instead of 30
 
+// Preload queue configuration
+static const NSInteger kPreloadAheadRows = 10; // Rows to preload ahead
+static const NSInteger kPreloadBehindRows = 5;  // Rows to preload behind
+static dispatch_queue_t preloadQueue = nil;
+static BOOL isPreloading = NO;
+static NSInteger lastVisibleRow = -1;
+
+// Scroll event throttling
+static CFAbsoluteTime lastRowVisibleTime = 0;
+static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
+
 @implementation TiUITableView (SmoothScrolling)
 
 #pragma mark - Height Caching
@@ -65,13 +76,20 @@ static const NSInteger kLogInterval = 60; // Log FPS every 60 frames instead of 
         sharedTemplateCache.countLimit = 500; // Fewer unique templates
         sharedTemplateCache.totalCostLimit = 5 * 1024 * 1024;
         
+        // Preload queue for background height calculation
+        if (preloadQueue == nil) {
+            preloadQueue = dispatch_queue_create("de.marcbender.tableviewextension.preload", DISPATCH_QUEUE_SERIAL);
+        }
+        
         cacheHitCount = 0;
         cacheMissCount = 0;
         templateHitCount = 0;
         totalHeightCalculationTime = 0;
+        lastVisibleRow = -1;
         
         NSLog(@"[TableViewExtension/Smooth] Height cache initialized (limit: 2000 entries, 20MB)");
         NSLog(@"[TableViewExtension/Smooth] Template cache initialized (limit: 500 templates, 5MB)");
+        NSLog(@"[TableViewExtension/Smooth] Preload queue initialized (ahead: %d, behind: %d)", kPreloadAheadRows, kPreloadBehindRows);
         NSLog(@"[TableViewExtension/Smooth] Performance tracking enabled");
     }
 }
@@ -209,6 +227,59 @@ static const NSInteger kLogInterval = 60; // Log FPS every 60 frames instead of 
     return height;
 }
 
+#pragma mark - Preload Queue
+
+- (void)preloadRowHeightsIfNeeded
+{
+    if (isPreloading) return;
+    
+    // Get current visible rows
+    NSArray *visiblePaths = [tableview indexPathsForVisibleRows];
+    if (visiblePaths.count == 0) return;
+    
+    // Find the last visible row
+    NSIndexPath *lastPath = [visiblePaths lastObject];
+    NSInteger currentLastVisible = lastPath.row;
+    
+    // Only preload if we scrolled significantly
+    if (currentLastVisible == lastVisibleRow) return;
+    lastVisibleRow = currentLastVisible;
+    
+    isPreloading = YES;
+    
+    // Preload in background queue
+    dispatch_async(preloadQueue, ^{
+        // Get row count
+        NSArray *sections = [(TiUITableViewProxy *)[self proxy] internalSections];
+        NSInteger totalRows = 0;
+        for (TiUITableViewSectionProxy *section in sections) {
+            totalRows += [section rows] count;
+        }
+        
+        // Preload rows ahead
+        for (NSInteger i = 1; i <= kPreloadAheadRows && (currentLastVisible + i) < totalRows; i++) {
+            NSInteger rowIdx = currentLastVisible + i;
+            NSIndexPath *path = [NSIndexPath indexPathForRow:rowIdx inSection:0];
+            TiUITableViewRowProxy *row = [self rowForIndexPath:path];
+            if (row) {
+                [self cachedHeightForRow:row indexPath:path];
+            }
+        }
+        
+        // Preload rows behind (for scrolling back)
+        for (NSInteger i = 1; i <= kPreloadBehindRows && (currentLastVisible - i) >= 0; i++) {
+            NSInteger rowIdx = currentLastVisible - i;
+            NSIndexPath *path = [NSIndexPath indexPathForRow:rowIdx inSection:0];
+            TiUITableViewRowProxy *row = [self rowForIndexPath:path];
+            if (row) {
+                [self cachedHeightForRow:row indexPath:path];
+            }
+        }
+        
+        isPreloading = NO;
+    });
+}
+
 #pragma mark - Estimated Heights
 
 - (void)enableEstimatedHeights:(CGFloat)estimatedHeight
@@ -226,7 +297,7 @@ static const NSInteger kLogInterval = 60; // Log FPS every 60 frames instead of 
 
 - (void)enablePrefetching
 {
-    NSLog(@"[TableViewExtension/Smooth] Prefetching enabled (uses cached heights)");
+    NSLog(@"[TableViewExtension/Smooth] Prefetching enabled (preload queue active)");
 }
 
 #pragma mark - Performance Logging
@@ -304,6 +375,9 @@ static const NSInteger kLogInterval = 60; // Log FPS every 60 frames instead of 
         }
     }
     lastScrollTime = currentTime;
+    
+    // Trigger preload queue
+    [self preloadRowHeightsIfNeeded];
     
     // Log FPS every 60 frames (reduced from 30)
     if (frameCount - lastLoggedFrame >= kLogInterval) {

@@ -14,6 +14,10 @@
 #import "TiUITableViewRowProxy.h"
 #import "TiUITableViewRowProxy+WithVisibility.h"
 
+// Scroll event throttling
+static CFAbsoluteTime lastRowVisibleTime = 0;
+static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
+
 // Debug logging macro
 #ifndef DEBUG
 #define TableViewExtensionLog(fmt, ...) do {} while(0)
@@ -524,27 +528,32 @@ typedef struct {
     }
     cell.backgroundColor = cellColor;
     
-    // Fire rowvisible event
-    if ([[self proxy] _hasListeners:@"rowvisible"]) {
-        NSInteger rowTopOffset = [row getTopOffset:nil];
-        NSInteger rowVisible = [row isVisible:nil];
+    // Fire rowvisible event with throttling (~60fps)
+    CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+    if (now - lastRowVisibleTime >= kRowVisibleThrottleInterval) {
+        lastRowVisibleTime = now;
         
-        NSInteger sectionIdx = [index section];
-        NSArray *sections = [(TiUITableViewProxy *)[self proxy] internalSections];
-        TiUITableViewSectionProxy *section = [self sectionForIndex:sectionIdx];
-        
-        NSInteger dataIndex = [self rowIndexForIndexPath:index andSections:sections];
-        
-        NSMutableDictionary *eventObject = [NSMutableDictionary dictionaryWithObjectsAndKeys:
-            section, @"section",
-            NUMINTEGER(dataIndex), @"index",
-            NUMINTEGER(rowTopOffset), @"topOffset",
-            row, @"row",
-            NUMINTEGER(rowVisible), @"isVisible",
-            row, @"rowData",
-            nil];
-        
-        [[self proxy] fireEvent:@"rowvisible" withObject:eventObject propagate:NO];
+        if ([[self proxy] _hasListeners:@"rowvisible"]) {
+            NSInteger rowTopOffset = [row getTopOffset:nil];
+            NSInteger rowVisible = [row isVisible:nil];
+            
+            NSInteger sectionIdx = [index section];
+            NSArray *sections = [(TiUITableViewProxy *)[self proxy] internalSections];
+            TiUITableViewSectionProxy *section = [self sectionForIndex:sectionIdx];
+            
+            NSInteger dataIndex = [self rowIndexForIndexPath:index andSections:sections];
+            
+            NSMutableDictionary *eventObject = [NSMutableDictionary dictionaryWithObjectsAndKeys:
+                section, @"section",
+                NUMINTEGER(dataIndex), @"index",
+                NUMINTEGER(rowTopOffset), @"topOffset",
+                row, @"row",
+                NUMINTEGER(rowVisible), @"isVisible",
+                row, @"rowData",
+                nil];
+            
+            [[self proxy] fireEvent:@"rowvisible" withObject:eventObject propagate:NO];
+        }
     }
 }
 
