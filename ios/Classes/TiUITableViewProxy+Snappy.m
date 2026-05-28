@@ -87,12 +87,14 @@ USE_VIEW_FOR_CONTENT_HEIGHT
 - (id)logPerformance:(id)args
 {
     TiUITableView *table = (TiUITableView *)[self view];
+    CGFloat currentFPS = [table currentFPS];
     
     NSLog(@"[TableViewExtension/Smooth] === Performance Report ===");
-    NSLog(@"[TableViewExtension/Smooth] TableView: %@", table);
-    NSLog(@"[TableViewExtension/Smooth] UITableView: %@", [table tableView]);
+    NSLog(@"[TableViewExtension/Smooth] Scroll FPS: %.1f", currentFPS);
     NSLog(@"[TableViewExtension/Smooth] Content Size: {%f, %f}", 
          [table tableView].contentSize.width, [table tableView].contentSize.height);
+    NSLog(@"[TableViewExtension/Smooth] Content Offset: {%f, %f}",
+         [table tableView].contentOffset.x, [table tableView].contentOffset.y);
     NSLog(@"[TableViewExtension/Smooth] ============================");
     
     return nil;

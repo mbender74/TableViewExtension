@@ -204,6 +204,11 @@ static CGFloat fps = 60;
     };
 }
 
+- (CGFloat)currentFPS
+{
+    return fps;
+}
+
 @end
 
 // Override heightForRowAtIndexPath to use cache
