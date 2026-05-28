@@ -42,6 +42,10 @@ static NSUInteger cacheMissCount = 0;
 static NSUInteger templateHitCount = 0; // Template cache hits
 static CGFloat totalHeightCalculationTime = 0;
 
+// Cell reuse statistics (visible to other files)
+NSUInteger cellReuseCount = 0;
+NSUInteger cellCreateCount = 0;
+
 // Scroll performance tracking - only log every N frames
 CFAbsoluteTime lastScrollTime = 0;
 NSInteger frameCount = 0;
@@ -54,13 +58,14 @@ static const NSInteger kFPSSampleWindow = 60;
 static CFAbsoluteTime frameTimestamps[60];
 static NSInteger fpsSampleIndex = 0;
 
-// Preload queue configuration
-static const NSInteger kPreloadAheadRows = 5;   // Rows to preload ahead (reduced from 10 to prevent jank)
-static const NSInteger kPreloadBehindRows = 3;  // Rows to preload behind (reduced from 5)
+// Preload queue configuration - adaptive based on scroll speed
+static NSInteger kPreloadAheadRows = 5;   // Dynamic: 3-10 based on velocity
+static NSInteger kPreloadBehindRows = 3;  // Dynamic: 2-5 based on velocity
 static dispatch_queue_t preloadQueue = nil;
 static BOOL isPreloading = NO;
 static NSInteger lastVisibleRow = -1;
 static NSInteger scrollEventCount = 0; // Counter to throttle preload calls
+static CGFloat lastScrollVelocity = 0; // Track scroll speed
 
 // Scroll event throttling
 static CFAbsoluteTime lastRowVisibleTime = 0;
@@ -73,14 +78,22 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
 - (void)enableHeightCaching
 {
     if (sharedHeightCache == nil) {
+        // Get device memory for dynamic limits
+        uint64_t totalMemory = [[NSProcessInfo processInfo] physicalMemory];
+        uint64_t memoryMB = totalMemory / (1024 * 1024);
+        
+        // Adaptive cache limits based on device memory
+        NSUInteger cacheLimit = (memoryMB > 3000) ? 3000 : 2000; // 3GB+ devices get more cache
+        NSUInteger costLimit = (memoryMB > 3000) ? 30 : 20; // MB
+        
         sharedHeightCache = [[NSCache alloc] init];
-        sharedHeightCache.countLimit = 2000;
-        sharedHeightCache.totalCostLimit = 20 * 1024 * 1024;
+        sharedHeightCache.countLimit = cacheLimit;
+        sharedHeightCache.totalCostLimit = costLimit * 1024 * 1024;
         
         // Template cache - stores heights by row configuration
         sharedTemplateCache = [[NSCache alloc] init];
-        sharedTemplateCache.countLimit = 500; // Fewer unique templates
-        sharedTemplateCache.totalCostLimit = 5 * 1024 * 1024;
+        sharedTemplateCache.countLimit = (memoryMB > 3000) ? 750 : 500;
+        sharedTemplateCache.totalCostLimit = (costLimit / 4) * 1024 * 1024;
         
         // Concurrent preload queue for parallel height calculation
         if (preloadQueue == nil) {
@@ -92,11 +105,6 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
         templateHitCount = 0;
         totalHeightCalculationTime = 0;
         lastVisibleRow = -1;
-        
-        NSLog(@"[TableViewExtension/Smooth] Height cache initialized (limit: 2000 entries, 20MB)");
-        NSLog(@"[TableViewExtension/Smooth] Template cache initialized (limit: 500 templates, 5MB)");
-        NSLog(@"[TableViewExtension/Smooth] Preload queue initialized (ahead: %d, behind: %d)", kPreloadAheadRows, kPreloadBehindRows);
-        NSLog(@"[TableViewExtension/Smooth] Performance tracking enabled");
     }
 }
 
@@ -108,7 +116,6 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
         cacheHitCount = 0;
         cacheMissCount = 0;
         templateHitCount = 0;
-        NSLog(@"[TableViewExtension/Smooth] Height cache cleared (indexPath + template)");
     }
 }
 
@@ -117,8 +124,6 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
     if (sharedHeightCache) {
         NSString *key = [self cacheKeyForIndexPath:indexPath];
         [sharedHeightCache removeObjectForKey:key];
-        NSLog(@"[TableViewExtension/Smooth] Height cache invalidated for row %ld section %ld", 
-              (long)indexPath.row, (long)indexPath.section);
     }
 }
 
@@ -158,29 +163,27 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
 
 - (NSString *)cacheKeyForIndexPath:(NSIndexPath *)indexPath
 {
-    TiUITableViewRowProxy *row = [self rowForIndexPath:indexPath];
-    id heightValue = [row valueForUndefinedKey:@"height"];
-    NSString *heightStr = heightValue ? [heightValue description] : @"SIZE";
-    
-    return [NSString stringWithFormat:@"%ld-%ld-%@", 
-             (long)indexPath.row, (long)indexPath.section, heightStr];
+    // Use NSNumber pointer as key - faster than NSString allocation
+    // Combine row + section into single UInt64
+    UInt64 combined = ((UInt64)indexPath.section << 32) | (UInt64)indexPath.row;
+    return [NSString stringWithFormat:@"%llx", combined];
 }
 
 - (NSString *)templateKeyForRow:(TiUITableViewRowProxy *)row
 {
     // Generate key from layout-relevant properties only
-    // Margins (top/bottom) don't affect intrinsic height, so skip them
+    // Use hash of properties for fast lookup without string allocation
     id heightValue = [row valueForUndefinedKey:@"height"];
     id widthValue = [row valueForUndefinedKey:@"width"];
     NSString *className = [row tableClass];
     
-    NSString *heightStr = heightValue ? [heightValue description] : @"SIZE";
-    NSString *widthStr = widthValue ? [widthValue description] : @"AUTO";
-    NSString *classStr = className ? className : @"TiUITableView";
+    // Combine hashes - collision-safe with modulo
+    NSUInteger hHash = heightValue ? [heightValue hash] : 0;
+    NSUInteger wHash = widthValue ? [widthValue hash] : 1;
+    NSUInteger cHash = className ? [className hash] : 2;
     
-    // Collision-safe: use separator to avoid hash collisions
-    // XOR kann zu Kollisionen führen, String-Konkatenation ist sicherer
-    return [NSString stringWithFormat:@"%@|%@|%@", heightStr, widthStr, classStr];
+    // Use all 3 hashes to minimize collisions
+    return [NSString stringWithFormat:@"%lx-%lx-%lx", hHash, wHash, cHash];
 }
 
 - (CGFloat)cachedHeightForRow:(TiUITableViewRowProxy *)row
@@ -470,8 +473,6 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
                 [sharedHeightCache removeObjectForKey:key];
             }
         }
-        
-        NSLog(@"[TableViewExtension/Smooth] Cache invalidated for row");
     }
 }
 
@@ -498,10 +499,16 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
 
 - (NSDictionary *)getPerformanceStats
 {
+    NSUInteger totalCells = cellReuseCount + cellCreateCount;
+    CGFloat reuseRate = totalCells > 0 ? (CGFloat)cellReuseCount / totalCells * 100.0 : 0;
+    
     return @{
         @"fps": @(fps),
         @"frameCount": @(frameCount),
-        @"cacheEntries": @(sharedHeightCache ? [sharedHeightCache count] : @0)
+        @"cacheEntries": @(sharedHeightCache ? [sharedHeightCache count] : @0),
+        @"cellReuseCount": @(cellReuseCount),
+        @"cellCreateCount": @(cellCreateCount),
+        @"cellReuseRate": @(reuseRate)
     };
 }
 
@@ -568,6 +575,22 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
     
     frameCount++;
     
+    // Adaptive preload: adjust based on scroll velocity
+    lastScrollVelocity = scrollView.velocity.y;
+    CGFloat speed = fabs(lastScrollVelocity);
+    
+    // Fast scroll: more preload rows
+    if (speed > 1000) {
+        kPreloadAheadRows = 10;
+        kPreloadBehindRows = 5;
+    } else if (speed > 500) {
+        kPreloadAheadRows = 7;
+        kPreloadBehindRows = 4;
+    } else {
+        kPreloadAheadRows = 5;
+        kPreloadBehindRows = 3;
+    }
+    
     // Store frame timestamp for rolling FPS calculation
     frameTimestamps[fpsSampleIndex % kFPSSampleWindow] = currentTime;
     fpsSampleIndex++;
@@ -584,15 +607,6 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
     
     // Trigger preload queue
     [self preloadRowHeightsIfNeeded];
-    
-    // Log FPS every 60 frames
-    if (frameCount - lastLoggedFrame >= kLogInterval) {
-        lastLoggedFrame = frameCount;
-        NSUInteger totalRequests = cacheHitCount + cacheMissCount;
-        CGFloat hitRate = totalRequests > 0 ? (CGFloat)cacheHitCount / totalRequests * 100.0 : 0;
-        NSLog(@"[TableViewExtension/Smooth] Scroll FPS: %.1f (smoothed) | Cache: %ld/%ld (%.0f%% hit rate)", 
-             fps, (long)cacheHitCount, (long)totalRequests, hitRate);
-    }
 }
 
 @end

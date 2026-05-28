@@ -19,6 +19,10 @@ static CFAbsoluteTime lastRowVisibleTime = 0;
 static CFAbsoluteTime lastRowNotVisibleTime = 0;
 static const CGFloat kRowVisibleThrottleInterval = 0.032; // ~30fps (reduced from 60fps to prevent jank)
 
+// Cell reuse statistics (defined in SmoothScrolling.m)
+extern NSUInteger cellReuseCount;
+extern NSUInteger cellCreateCount;
+
 // Debug logging macro
 #ifndef DEBUG
 #define TableViewExtensionLog(fmt, ...) do {} while(0)
@@ -516,6 +520,13 @@ typedef struct {
     
     // Cache row lookup - use for both background color and event
     TiUITableViewRowProxy *row = [self rowForIndexPath:index];
+    
+    // Track cell reuse
+    if (cell.reuseIdentifier) {
+        cellReuseCount++;
+    } else {
+        cellCreateCount++;
+    }
     
     // Set background color (no dispatch needed - already on main thread)
     NSString *color = [row valueForKey:@"backgroundColor"];
