@@ -88,4 +88,9 @@
 - (void)enableSectionHeaderFooterCachingWithHeaderHeight:(CGFloat)headerHeight
                                              footerHeight:(CGFloat)footerHeight;
 
+/**
+ * Invalidate cache for a specific row when its content changes.
+ */
+- (void)invalidateCacheForRow:(TiUITableViewRowProxy *)row;
+
 @end

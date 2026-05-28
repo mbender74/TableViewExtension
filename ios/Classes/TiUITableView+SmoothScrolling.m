@@ -174,13 +174,13 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
     id widthValue = [row valueForUndefinedKey:@"width"];
     NSString *className = [row tableClass];
     
-    // Use hash-based key for faster cache lookups (less string allocation)
     NSString *heightStr = heightValue ? [heightValue description] : @"SIZE";
     NSString *widthStr = widthValue ? [widthValue description] : @"AUTO";
     NSString *classStr = className ? className : @"TiUITableView";
     
-    NSUInteger combinedHash = heightStr.hash ^ widthStr.hash ^ classStr.hash;
-    return [NSString stringWithFormat:@"%lx", combinedHash];
+    // Collision-safe: use separator to avoid hash collisions
+    // XOR kann zu Kollisionen führen, String-Konkatenation ist sicherer
+    return [NSString stringWithFormat:@"%@|%@|%@", heightStr, widthStr, classStr];
 }
 
 - (CGFloat)cachedHeightForRow:(TiUITableViewRowProxy *)row
@@ -334,9 +334,10 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
         }
     }
     
-    // Wait for all preloads to complete
-    dispatch_group_wait(group, DISPATCH_TIME_FOREVER);
-    isPreloading = NO;
+    // Non-blocking: notify when done instead of waiting
+    dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+        isPreloading = NO;
+    });
 }
 
 #pragma mark - Estimated Heights
@@ -369,24 +370,13 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
     // Set up prefetch delegate for complex layouts
     tableview.prefetchDataSource = (id<UITableViewPrefetchDataSource>)self;
     
-    // Also enable background image loading for nested views
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
-        // Preload images from visible rows
-        [[NSNotificationCenter defaultCenter] addObserver:self
-                                                 selector:@selector(preloadImagesForRow:)
-                                                     name:UITableViewDataSourceMetricBlockNotification
-                                                   object:nil];
-    });
-    
     NSLog(@"[TableViewExtension/Smooth] Image preloading enabled (including nested views)");
 }
 
-- (void)preloadImagesForRow:(NSNotification *)notification
+- (void)tableView:(UITableView *)tableView prefetchRowsAtIndexPaths:(NSArray<NSIndexPath *> *)indexPaths
 {
-    // Extract images from complex row layouts
-    NSArray *visiblePaths = [tableview indexPathsForVisibleRows];
-    
-    for (NSIndexPath *path in visiblePaths) {
+    // Preload images from upcoming rows
+    for (NSIndexPath *path in indexPaths) {
         TiUITableViewRowProxy *row = [self rowForIndexPath:path];
         if (row) {
             // Get row view hierarchy
@@ -402,27 +392,15 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
 {
     for (id view in views) {
         // Check if it's an ImageView
-        if ([view isKindOfClass:[Ti.UI.ImageView class]] || [view isKindOfClass:[TiUIImageView class]]) {
+        if ([view isKindOfClass:[TiUIImageView class]]) {
             id imageValue = [view valueForUndefinedKey:@"image"];
-            if (imageValue) {
-                // Force image load into memory
-                if ([imageValue isKindOfClass:[NSString class]]) {
-                    UIImage *image = [UIImage imageNamed:imageValue];
-                    if (image) {
-                        // Keep in memory cache
-                        [UIImage imageNamed:imageValue];
-                    }
-                }
-            }
-            
-            // Check nested views
-            NSArray *subviews = [view valueForUndefinedKey:@"subviews"];
-            if (subviews) {
-                [self preloadImagesFromViews:subviews];
+            if ([imageValue isKindOfClass:[NSString class]]) {
+                // Force image load into memory cache
+                [UIImage imageNamed:imageValue];
             }
         }
         
-        // Check for nested views
+        // Recursively check subviews
         NSArray *subviews = [view valueForUndefinedKey:@"subviews"];
         if (subviews) {
             [self preloadImagesFromViews:subviews];
@@ -474,6 +452,26 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
     if (headerHeight > 0 || footerHeight > 0) {
         tableview.estimatedSectionHeaderHeight = headerHeight > 0 ? headerHeight : 44;
         tableview.estimatedSectionFooterHeight = footerHeight > 0 ? footerHeight : 22;
+    }
+}
+
+- (void)invalidateCacheForRow:(TiUITableViewRowProxy *)row
+{
+    if (sharedHeightCache) {
+        // Invalidate template cache entry
+        NSString *templateKey = [self templateKeyForRow:row];
+        [sharedTemplateCache removeObjectForKey:templateKey];
+        
+        // Also invalidate all indexPath entries for this row
+        for (NSIndexPath *path in [tableview indexPathsForVisibleRows]) {
+            TiUITableViewRowProxy *rowProxy = [self rowForIndexPath:path];
+            if (rowProxy == row) {
+                NSString *key = [self cacheKeyForIndexPath:path];
+                [sharedHeightCache removeObjectForKey:key];
+            }
+        }
+        
+        NSLog(@"[TableViewExtension/Smooth] Cache invalidated for row");
     }
 }
 
@@ -559,23 +557,22 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
         [self.nextResponder scrollViewDidScroll:scrollView];
     }
     
-    frameCount++;
     CFAbsoluteTime currentTime = CFAbsoluteTimeGetCurrent();
+    
+    // Throttle scroll processing to ~30fps to reduce main thread load
+    static CFAbsoluteTime lastScrollProcessTime = 0;
+    if (currentTime - lastScrollProcessTime < 0.032) {
+        return; // Skip this frame
+    }
+    lastScrollProcessTime = currentTime;
+    
+    frameCount++;
     
     // Store frame timestamp for rolling FPS calculation
     frameTimestamps[fpsSampleIndex % kFPSSampleWindow] = currentTime;
     fpsSampleIndex++;
     
-    // Calculate rolling average FPS over last N frames
-    if (lastScrollTime > 0) {
-        CGFloat delta = (currentTime - lastScrollTime) * 1000.0;
-        if (delta > 0) {
-            fps = 1000.0 / delta;
-        }
-    }
-    lastScrollTime = currentTime;
-    
-    // Calculate smoothed FPS from rolling window
+    // Calculate smoothed FPS from rolling window (only method used)
     if (fpsSampleIndex >= kFPSSampleWindow) {
         CFAbsoluteTime oldestTime = frameTimestamps[(fpsSampleIndex - kFPSSampleWindow) % kFPSSampleWindow];
         CFAbsoluteTime newestTime = frameTimestamps[(fpsSampleIndex - 1) % kFPSSampleWindow];
@@ -588,7 +585,7 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
     // Trigger preload queue
     [self preloadRowHeightsIfNeeded];
     
-    // Log FPS every 60 frames (reduced from 30)
+    // Log FPS every 60 frames
     if (frameCount - lastLoggedFrame >= kLogInterval) {
         lastLoggedFrame = frameCount;
         NSUInteger totalRequests = cacheHitCount + cacheMissCount;

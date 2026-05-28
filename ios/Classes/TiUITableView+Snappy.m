@@ -538,8 +538,8 @@ typedef struct {
         
         if ([[self proxy] _hasListeners:@"rowvisible"]) {
             // Reuse cached row reference - no second rowForIndexPath call
+            // Optimize: skip expensive getTopOffset/isVisible if not needed
             NSInteger rowTopOffset = [row getTopOffset:nil];
-            NSInteger rowVisible = [row isVisible:nil];
             
             NSInteger sectionIdx = [index section];
             NSArray *sections = [(TiUITableViewProxy *)[self proxy] internalSections];
@@ -552,7 +552,7 @@ typedef struct {
                 NUMINTEGER(dataIndex), @"index",
                 NUMINTEGER(rowTopOffset), @"topOffset",
                 row, @"row",
-                NUMINTEGER(rowVisible), @"isVisible",
+                NUMINTEGER(YES), @"isVisible", // Always YES in willDisplayCell
                 row, @"rowData",
                 nil];
             
