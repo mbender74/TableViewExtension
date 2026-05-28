@@ -207,12 +207,15 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
     
     cacheMissCount++;
     
-    // Check if row has a fixed height set (not SIZE or FILL)
+    // Check if row has a fixed height set (not SIZE, FILL, or percentage)
     id heightValue = [row valueForUndefinedKey:@"height"];
     NSString *heightStr = heightValue ? [heightValue description] : @"";
     
-    // If height is a fixed number (not "SIZE" or "FILL"), use it directly
-    if (![heightStr isEqualToString:@"SIZE"] && ![heightStr isEqualToString:@"FILL"] && ![heightStr isEqualToString:@""]) {
+    // If height is a fixed number (not "SIZE", "FILL", or percentage like "50%"), use it directly
+    if (![heightStr isEqualToString:@"SIZE"] && 
+        ![heightStr isEqualToString:@"FILL"] && 
+        ![heightStr isEqualToString:@""] &&
+        ![heightStr hasSuffix:@"%"]) {
         CGFloat fixedHeight = [heightValue floatValue];
         if (fixedHeight > 0) {
             // Store in cache for future access
@@ -382,18 +385,23 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
 {
     TiUITableViewRowProxy *row = [self rowForIndexPath:indexPath];
     
-    // Check if row has a fixed height set (not SIZE or FILL)
+    // Check row height type: fixed number, SIZE, FILL, or percentage
     id heightValue = [row valueForUndefinedKey:@"height"];
     NSString *heightStr = heightValue ? [heightValue description] : @"";
     
-    // If height is a fixed number, use it directly - skip all caching overhead
-    if (![heightStr isEqualToString:@"SIZE"] && ![heightStr isEqualToString:@"FILL"] && ![heightStr isEqualToString:@""]) {
+    // Fast path: fixed height (e.g., height:69)
+    // Skip all caching and layout calculation
+    if (![heightStr isEqualToString:@"SIZE"] && 
+        ![heightStr isEqualToString:@"FILL"] && 
+        ![heightStr isEqualToString:@""] &&
+        ![heightStr hasSuffix:@"%"]) {
         CGFloat fixedHeight = [heightValue floatValue];
         if (fixedHeight > 0) {
             return fixedHeight;
         }
     }
     
+    // Slow path: SIZE, FILL, or percentage → use cache or calculate
     if (sharedHeightCache != nil) {
         return [self cachedHeightForRow:row indexPath:indexPath];
     }
