@@ -284,7 +284,17 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
             return;
         }
         
+        // Helper: check if row needs height calculation (SIZE, FILL, or %)
+        BOOL (^needsHeightCalc)(TiUITableViewRowProxy *) = ^(TiUITableViewRowProxy *row) {
+            id heightValue = [row valueForUndefinedKey:@"height"];
+            NSString *heightStr = heightValue ? [heightValue description] : @"";
+            return [heightStr isEqualToString:@"SIZE"] || 
+                   [heightStr isEqualToString:@"FILL"] || 
+                   [heightStr hasSuffix:@"%"];
+        };
+        
         // Preload rows ahead (same section, then next sections)
+        // Skip fixed-height rows - they don't need caching
         NSInteger aheadCount = 0;
         for (NSInteger s = currentSection; s < sections.count && aheadCount < kPreloadAheadRows; s++) {
             TiUITableViewSectionProxy *section = sections[s];
@@ -293,7 +303,7 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
             for (NSInteger r = (s == currentSection ? currentRow + 1 : 0); r < sectionRowCount && aheadCount < kPreloadAheadRows; r++) {
                 NSIndexPath *path = [NSIndexPath indexPathForRow:r inSection:s];
                 TiUITableViewRowProxy *row = [self rowForIndexPath:path];
-                if (row) {
+                if (row && needsHeightCalc(row)) {
                     [self cachedHeightForRow:row indexPath:path];
                 }
                 aheadCount++;
@@ -310,7 +320,7 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
             for (NSInteger r = (s == currentSection ? currentRow - 1 : sectionRowCount - 1); r >= 0 && behindCount < kPreloadBehindRows; r--) {
                 NSIndexPath *path = [NSIndexPath indexPathForRow:r inSection:s];
                 TiUITableViewRowProxy *row = [self rowForIndexPath:path];
-                if (row) {
+                if (row && needsHeightCalc(row)) {
                     [self cachedHeightForRow:row indexPath:path];
                 }
                 behindCount++;
