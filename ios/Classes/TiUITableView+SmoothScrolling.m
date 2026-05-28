@@ -36,8 +36,10 @@ static inline PerformanceTimer timerStop(PerformanceTimer timer) {
 
 // Static cache for row heights - optimized limits
 static NSCache<NSString *, NSNumber *> *sharedHeightCache;
+static NSCache<NSString *, NSNumber *> *sharedTemplateCache; // Template-based cache
 static NSUInteger cacheHitCount = 0;
 static NSUInteger cacheMissCount = 0;
+static NSUInteger templateHitCount = 0; // Template cache hits
 static CGFloat totalHeightCalculationTime = 0;
 
 // Scroll performance tracking - only log every N frames
@@ -55,12 +57,21 @@ static const NSInteger kLogInterval = 60; // Log FPS every 60 frames instead of 
 {
     if (sharedHeightCache == nil) {
         sharedHeightCache = [[NSCache alloc] init];
-        sharedHeightCache.countLimit = 2000; // Increased from 500
-        sharedHeightCache.totalCostLimit = 20 * 1024 * 1024; // 20MB
+        sharedHeightCache.countLimit = 2000;
+        sharedHeightCache.totalCostLimit = 20 * 1024 * 1024;
+        
+        // Template cache - stores heights by row configuration
+        sharedTemplateCache = [[NSCache alloc] init];
+        sharedTemplateCache.countLimit = 500; // Fewer unique templates
+        sharedTemplateCache.totalCostLimit = 5 * 1024 * 1024;
+        
         cacheHitCount = 0;
         cacheMissCount = 0;
+        templateHitCount = 0;
         totalHeightCalculationTime = 0;
+        
         NSLog(@"[TableViewExtension/Smooth] Height cache initialized (limit: 2000 entries, 20MB)");
+        NSLog(@"[TableViewExtension/Smooth] Template cache initialized (limit: 500 templates, 5MB)");
         NSLog(@"[TableViewExtension/Smooth] Performance tracking enabled");
     }
 }
@@ -69,7 +80,11 @@ static const NSInteger kLogInterval = 60; // Log FPS every 60 frames instead of 
 {
     if (sharedHeightCache) {
         [sharedHeightCache removeAllObjects];
-        NSLog(@"[TableViewExtension/Smooth] Height cache cleared");
+        [sharedTemplateCache removeAllObjects];
+        cacheHitCount = 0;
+        cacheMissCount = 0;
+        templateHitCount = 0;
+        NSLog(@"[TableViewExtension/Smooth] Height cache cleared (indexPath + template)");
     }
 }
 
@@ -89,6 +104,7 @@ static const NSInteger kLogInterval = 60; // Log FPS every 60 frames instead of 
         return @{
             @"hits": @0,
             @"misses": @0,
+            @"templateHits": @0,
             @"count": @0,
             @"totalCost": @0,
             @"hitRate": @0,
@@ -101,12 +117,13 @@ static const NSInteger kLogInterval = 60; // Log FPS every 60 frames instead of 
     CGFloat hitRate = totalRequests > 0 ? (CGFloat)cacheHitCount / totalRequests * 100.0 : 0;
     CGFloat avgTime = cacheMissCount > 0 ? totalHeightCalculationTime / cacheMissCount : 0;
     
-    NSLog(@"[TableViewExtension/Smooth] Cache stats: %ld hits, %ld misses, %.1f%% hit rate, avg %.2fms/calc",
-             (long)cacheHitCount, (long)cacheMissCount, hitRate, avgTime);
+    NSLog(@"[TableViewExtension/Smooth] Cache stats: %ld hits (%ld template), %ld misses, %.1f%% hit rate, avg %.2fms/calc",
+             (long)cacheHitCount, (long)templateHitCount, (long)cacheMissCount, hitRate, avgTime);
     
     return @{
         @"hits": @(cacheHitCount),
         @"misses": @(cacheMissCount),
+        @"templateHits": @(templateHitCount),
         @"count": @([sharedHeightCache count]),
         @"totalCost": @([sharedHeightCache totalCost]),
         @"hitRate": @(hitRate),
@@ -125,9 +142,42 @@ static const NSInteger kLogInterval = 60; // Log FPS every 60 frames instead of 
              (long)indexPath.row, (long)indexPath.section, heightStr];
 }
 
+- (NSString *)templateKeyForRow:(TiUITableViewRowProxy *)row
+{
+    // Generate key from row configuration properties
+    id heightValue = [row valueForUndefinedKey:@"height"];
+    id widthValue = [row valueForUndefinedKey:@"width"];
+    NSString *className = [row tableClass];
+    NSString *backgroundColor = [row valueForKey:@"backgroundColor"];
+    NSString *top = [row valueForKey:@"top"] ? [[row valueForKey:@"top"] description] : @"0";
+    NSString *bottom = [row valueForKey:@"bottom"] ? [[row valueForKey:@"bottom"] description] : @"0";
+    
+    return [NSString stringWithFormat:@"%@-%@-%@-%@-%@-%@", 
+             heightValue ? [heightValue description] : @"SIZE",
+             widthValue ? [widthValue description] : @"AUTO",
+             className ? className : @"TiUITableView",
+             backgroundColor ? backgroundColor : @"white",
+             top,
+             bottom];
+}
+
 - (CGFloat)cachedHeightForRow:(TiUITableViewRowProxy *)row 
                    indexPath:(NSIndexPath *)indexPath
 {
+    // First try template cache (configuration-based)
+    NSString *templateKey = [self templateKeyForRow:row];
+    NSNumber *templateCached = [sharedTemplateCache objectForKey:templateKey];
+    
+    if (templateCached) {
+        templateHitCount++;
+        cacheHitCount++;
+        // Also store in indexPath cache for faster future access
+        NSString *key = [self cacheKeyForIndexPath:indexPath];
+        [sharedHeightCache setObject:templateCached forKey:key cost:sizeof(CGFloat)];
+        return templateCached.floatValue;
+    }
+    
+    // Try indexPath cache
     NSString *key = [self cacheKeyForIndexPath:indexPath];
     NSNumber *cached = [sharedHeightCache objectForKey:key];
     
@@ -146,7 +196,9 @@ static const NSInteger kLogInterval = 60; // Log FPS every 60 frames instead of 
     timer = timerStop(timer);
     totalHeightCalculationTime += timer.durationMs;
     
+    // Store in both caches
     [sharedHeightCache setObject:@(height) forKey:key cost:sizeof(CGFloat)];
+    [sharedTemplateCache setObject:@(height) forKey:templateKey cost:sizeof(CGFloat)];
     
     // Only log slow calculations (>10ms)
     if (timer.durationMs > 10.0) {
@@ -187,12 +239,14 @@ static const NSInteger kLogInterval = 60; // Log FPS every 60 frames instead of 
     
     NSLog(@"[TableViewExtension/Smooth] === Performance Report ===");
     NSLog(@"[TableViewExtension/Smooth] Scroll FPS: %.1f", fps);
-    NSLog(@"[TableViewExtension/Smooth] Cache Hit Rate: %.1f%% (%ld/%ld)", 
-         hitRate, (long)cacheHitCount, (long)totalRequests);
+    NSLog(@"[TableViewExtension/Smooth] Cache Hit Rate: %.1f%% (%ld/%ld, %ld template)", 
+         hitRate, (long)cacheHitCount, (long)totalRequests, (long)templateHitCount);
     NSLog(@"[TableViewExtension/Smooth] Avg Height Calc: %.2fms", avgTime);
-    NSLog(@"[TableViewExtension/Smooth] Cache Size: %ld entries, %.1fKB",
+    NSLog(@"[TableViewExtension/Smooth] Cache Size: %ld entries (%.1fKB), Templates: %ld (%.1fKB)",
          (long)[sharedHeightCache count], 
-         (double)[sharedHeightCache totalCost] / 1024.0);
+         (double)[sharedHeightCache totalCost] / 1024.0,
+         (long)[sharedTemplateCache count],
+         (double)[sharedTemplateCache totalCost] / 1024.0);
     NSLog(@"[TableViewExtension/Smooth] ============================");
 }
 
