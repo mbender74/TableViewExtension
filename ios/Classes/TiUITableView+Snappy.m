@@ -14,9 +14,14 @@
 #import "TiUITableViewRowProxy.h"
 #import "TiUITableViewRowProxy+WithVisibility.h"
 
-// Scroll event throttling
+// Scroll event throttling - separate variables for visible/not-visible
 static CFAbsoluteTime lastRowVisibleTime = 0;
+static CFAbsoluteTime lastRowNotVisibleTime = 0;
 static const CGFloat kRowVisibleThrottleInterval = 0.032; // ~30fps (reduced from 60fps to prevent jank)
+
+// Batch event collection
+static NSMutableArray *pendingVisibleEvents = nil;
+static BOOL isBatchingEvents = NO;
 
 // Debug logging macro
 #ifndef DEBUG
@@ -512,6 +517,8 @@ typedef struct {
 - (void)tableView:(UITableView *)thisTableView willDisplayCell:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath
 {
     NSIndexPath *index = indexPath;
+    
+    // Cache row lookup - use for both background color and event
     TiUITableViewRowProxy *row = [self rowForIndexPath:index];
     
     // Set background color (no dispatch needed - already on main thread)
@@ -529,30 +536,44 @@ typedef struct {
     cell.backgroundColor = cellColor;
     
     // Fire rowvisible event with throttling (~30fps to prevent jank)
+    // Batch multiple rows into single event to reduce JS bridge overhead
     CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+    
+    if (!pendingVisibleEvents) {
+        pendingVisibleEvents = [NSMutableArray arrayWithCapacity:5];
+    }
+    
+    // Add row to batch queue
+    if ([[self proxy] _hasListeners:@"rowvisible"]) {
+        NSInteger rowTopOffset = [row getTopOffset:nil];
+        NSInteger rowVisible = [row isVisible:nil];
+        
+        NSInteger sectionIdx = [index section];
+        NSArray *sections = [(TiUITableViewProxy *)[self proxy] internalSections];
+        TiUITableViewSectionProxy *section = [self sectionForIndex:sectionIdx];
+        
+        NSInteger dataIndex = [self rowIndexForIndexPath:index andSections:sections];
+        
+        NSDictionary *rowEvent = @{
+            @"section": section,
+            @"index": @(dataIndex),
+            @"topOffset": @(rowTopOffset),
+            @"row": row,
+            @"isVisible": @(rowVisible),
+            @"rowData": row
+        };
+        
+        [pendingVisibleEvents addObject:rowEvent];
+    }
+    
+    // Fire batched events at throttle interval
     if (now - lastRowVisibleTime >= kRowVisibleThrottleInterval) {
         lastRowVisibleTime = now;
         
-        if ([[self proxy] _hasListeners:@"rowvisible"]) {
-            NSInteger rowTopOffset = [row getTopOffset:nil];
-            NSInteger rowVisible = [row isVisible:nil];
-            
-            NSInteger sectionIdx = [index section];
-            NSArray *sections = [(TiUITableViewProxy *)[self proxy] internalSections];
-            TiUITableViewSectionProxy *section = [self sectionForIndex:sectionIdx];
-            
-            NSInteger dataIndex = [self rowIndexForIndexPath:index andSections:sections];
-            
-            NSMutableDictionary *eventObject = [NSMutableDictionary dictionaryWithObjectsAndKeys:
-                section, @"section",
-                NUMINTEGER(dataIndex), @"index",
-                NUMINTEGER(rowTopOffset), @"topOffset",
-                row, @"row",
-                NUMINTEGER(rowVisible), @"isVisible",
-                row, @"rowData",
-                nil];
-            
-            [[self proxy] fireEvent:@"rowvisible" withObject:eventObject propagate:NO];
+        if (pendingVisibleEvents.count > 0) {
+            // Fire all batched events as array
+            [[self proxy] fireEvent:@"rowvisible" withObject:@{@"rows": [pendingVisibleEvents copy]} propagate:NO];
+            [pendingVisibleEvents removeAllObjects];
         }
     }
 }
@@ -611,10 +632,10 @@ typedef struct {
 - (void)tableView:(UITableView *)thisTableView didEndDisplayingCell:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath
 {
     if ([[self proxy] _hasListeners:@"rownotvisible"]) {
-        // Throttle rownotvisible events to ~60fps
+        // Throttle rownotvisible events with separate timer
         CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
-        if (now - lastRowVisibleTime >= kRowVisibleThrottleInterval) {
-            lastRowVisibleTime = now;
+        if (now - lastRowNotVisibleTime >= kRowVisibleThrottleInterval) {
+            lastRowNotVisibleTime = now;
             
             NSIndexPath *index = indexPath;
             TiUITableViewRowProxy *row = [self rowForIndexPath:index];

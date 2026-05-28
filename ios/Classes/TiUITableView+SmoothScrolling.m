@@ -82,9 +82,9 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
         sharedTemplateCache.countLimit = 500; // Fewer unique templates
         sharedTemplateCache.totalCostLimit = 5 * 1024 * 1024;
         
-        // Preload queue for background height calculation
+        // Concurrent preload queue for parallel height calculation
         if (preloadQueue == nil) {
-            preloadQueue = dispatch_queue_create("de.marcbender.tableviewextension.preload", DISPATCH_QUEUE_SERIAL);
+            preloadQueue = dispatch_queue_create("de.marcbender.tableviewextension.preload", DISPATCH_QUEUE_CONCURRENT);
         }
         
         cacheHitCount = 0;
@@ -174,10 +174,13 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
     id widthValue = [row valueForUndefinedKey:@"width"];
     NSString *className = [row tableClass];
     
-    return [NSString stringWithFormat:@"%@-%@-%@", 
-             heightValue ? [heightValue description] : @"SIZE",
-             widthValue ? [widthValue description] : @"AUTO",
-             className ? className : @"TiUITableView"];
+    // Use hash-based key for faster cache lookups (less string allocation)
+    NSString *heightStr = heightValue ? [heightValue description] : @"SIZE";
+    NSString *widthStr = widthValue ? [widthValue description] : @"AUTO";
+    NSString *classStr = className ? className : @"TiUITableView";
+    
+    NSUInteger combinedHash = heightStr.hash ^ widthStr.hash ^ classStr.hash;
+    return [NSString stringWithFormat:@"%lx", combinedHash];
 }
 
 - (CGFloat)cachedHeightForRow:(TiUITableViewRowProxy *)row
@@ -275,60 +278,65 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
     
     isPreloading = YES;
     
-    // Preload in background queue
-    dispatch_async(preloadQueue, ^{
-        // Get sections
-        NSArray *sections = [(TiUITableViewProxy *)[self proxy] internalSections];
-        if (sections.count == 0) {
-            isPreloading = NO;
-            return;
-        }
-        
-        // Helper: check if row needs height calculation (SIZE, FILL, or %)
-        BOOL (^needsHeightCalc)(TiUITableViewRowProxy *) = ^(TiUITableViewRowProxy *row) {
-            id heightValue = [row valueForUndefinedKey:@"height"];
-            NSString *heightStr = heightValue ? [heightValue description] : @"";
-            return [heightStr isEqualToString:@"SIZE"] || 
-                   [heightStr isEqualToString:@"FILL"] || 
-                   [heightStr hasSuffix:@"%"];
-        };
-        
-        // Preload rows ahead (same section, then next sections)
-        // Skip fixed-height rows - they don't need caching
-        NSInteger aheadCount = 0;
-        for (NSInteger s = currentSection; s < sections.count && aheadCount < kPreloadAheadRows; s++) {
-            TiUITableViewSectionProxy *section = sections[s];
-            NSInteger sectionRowCount = [section rows] count;
-            
-            for (NSInteger r = (s == currentSection ? currentRow + 1 : 0); r < sectionRowCount && aheadCount < kPreloadAheadRows; r++) {
-                NSIndexPath *path = [NSIndexPath indexPathForRow:r inSection:s];
-                TiUITableViewRowProxy *row = [self rowForIndexPath:path];
-                if (row && needsHeightCalc(row)) {
-                    [self cachedHeightForRow:row indexPath:path];
-                }
-                aheadCount++;
-            }
-        }
-        
-        // Preload rows behind (same section, then previous sections)
-        NSInteger behindCount = 0;
-        for (NSInteger s = currentSection; s >= 0 && behindCount < kPreloadBehindRows; s--) {
-            TiUITableViewSectionProxy *section = sections[s];
-            NSArray *rows = [section rows];
-            NSInteger sectionRowCount = rows.count;
-            
-            for (NSInteger r = (s == currentSection ? currentRow - 1 : sectionRowCount - 1); r >= 0 && behindCount < kPreloadBehindRows; r--) {
-                NSIndexPath *path = [NSIndexPath indexPathForRow:r inSection:s];
-                TiUITableViewRowProxy *row = [self rowForIndexPath:path];
-                if (row && needsHeightCalc(row)) {
-                    [self cachedHeightForRow:row indexPath:path];
-                }
-                behindCount++;
-            }
-        }
-        
+    // Preload in concurrent background queue with dispatch_group
+    dispatch_group_t group = dispatch_group_create();
+    
+    // Get sections
+    NSArray *sections = [(TiUITableViewProxy *)[self proxy] internalSections];
+    if (sections.count == 0) {
         isPreloading = NO;
-    });
+        return;
+    }
+    
+    // Helper: check if row needs height calculation (SIZE, FILL, or %)
+    BOOL (^needsHeightCalc)(TiUITableViewRowProxy *) = ^(TiUITableViewRowProxy *row) {
+        id heightValue = [row valueForUndefinedKey:@"height"];
+        NSString *heightStr = heightValue ? [heightValue description] : @"";
+        return [heightStr isEqualToString:@"SIZE"] || 
+               [heightStr isEqualToString:@"FILL"] || 
+               [heightStr hasSuffix:@"%"];
+    };
+    
+    // Preload rows ahead (concurrent)
+    NSInteger aheadCount = 0;
+    for (NSInteger s = currentSection; s < sections.count && aheadCount < kPreloadAheadRows; s++) {
+        TiUITableViewSectionProxy *section = sections[s];
+        NSInteger sectionRowCount = [section rows] count;
+        
+        for (NSInteger r = (s == currentSection ? currentRow + 1 : 0); r < sectionRowCount && aheadCount < kPreloadAheadRows; r++) {
+            NSIndexPath *path = [NSIndexPath indexPathForRow:r inSection:s];
+            TiUITableViewRowProxy *row = [self rowForIndexPath:path];
+            if (row && needsHeightCalc(row)) {
+                dispatch_group_async(group, preloadQueue, ^{
+                    [self cachedHeightForRow:row indexPath:path];
+                });
+            }
+            aheadCount++;
+        }
+    }
+    
+    // Preload rows behind (concurrent)
+    NSInteger behindCount = 0;
+    for (NSInteger s = currentSection; s >= 0 && behindCount < kPreloadBehindRows; s--) {
+        TiUITableViewSectionProxy *section = sections[s];
+        NSArray *rows = [section rows];
+        NSInteger sectionRowCount = rows.count;
+        
+        for (NSInteger r = (s == currentSection ? currentRow - 1 : sectionRowCount - 1); r >= 0 && behindCount < kPreloadBehindRows; r--) {
+            NSIndexPath *path = [NSIndexPath indexPathForRow:r inSection:s];
+            TiUITableViewRowProxy *row = [self rowForIndexPath:path];
+            if (row && needsHeightCalc(row)) {
+                dispatch_group_async(group, preloadQueue, ^{
+                    [self cachedHeightForRow:row indexPath:path];
+                });
+            }
+            behindCount++;
+        }
+    }
+    
+    // Wait for all preloads to complete
+    dispatch_group_wait(group, DISPATCH_TIME_FOREVER);
+    isPreloading = NO;
 }
 
 #pragma mark - Estimated Heights
