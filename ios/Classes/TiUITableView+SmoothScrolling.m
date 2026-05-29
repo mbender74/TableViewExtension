@@ -145,6 +145,30 @@ const CGFloat kRowVisibleThrottleInterval = 0.032; // ~30fps
     }
 }
 
++ (void)cleanupCaches
+{
+    if (sharedHeightCache) {
+        os_unfair_lock_lock(cacheLock);
+        [sharedHeightCache removeAllObjects];
+        [sharedTemplateCache removeAllObjects];
+        os_unfair_lock_unlock(cacheLock);
+        sharedHeightCache = nil;
+        sharedTemplateCache = nil;
+    }
+    if (cacheLock) {
+        free(cacheLock);
+        cacheLock = nil;
+    }
+    preloadQueue = nil;
+    preloadQueueOnce = 0;
+}
+
+// C wrapper so callers that don't know TiUITableView can still clean up.
+void TVECleanupCaches(void)
+{
+    [TiUITableView cleanupCaches];
+}
+
 - (void)invalidateHeightCache
 {
     if (sharedHeightCache) {

@@ -146,9 +146,10 @@
         }
     }
     
-    // Default to green if no backgroundColor set
+    // If the row has no backgroundColor at all, do not force an arbitrary
+    // default color. Subviews with their own backgroundColor will remain visible.
     if (!rowBgColor) {
-        rowBgColor = [UIColor greenColor];
+        return;
     }
     
     // Make row container and all subviews opaque

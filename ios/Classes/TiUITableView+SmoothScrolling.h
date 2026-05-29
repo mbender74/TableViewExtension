@@ -102,4 +102,10 @@ extern const CGFloat kRowVisibleThrottleInterval;
  */
 - (void)invalidateCacheForRow:(TiUITableViewRowProxy *)row;
 
+/**
+ * Clean up all caches and the lock. Call this when the module is being
+ * shut down or uninstalled to prevent memory leaks.
+ */
++ (void)cleanupCaches;
+
 @end

@@ -10,6 +10,9 @@
 #import "TiHost.h"
 #import "TiUtils.h"
 
+// Forward declaration — defined in TiUITableView+SmoothScrolling.m
+extern void TVECleanupCaches(void);
+
 @implementation DeMarcbenderTableviewextensionModule
 
 #pragma mark Internal
@@ -39,9 +42,8 @@
 
 -(void)shutdown:(id)sender
 {
-	// this method is called when the module is being unloaded
-	// typically this is during shutdown. make sure you don't do too
-	// much processing here or the app will be quit forceably
+	// Clean up caches and locks to prevent memory leaks on module unload
+	TVECleanupCaches();
 
 	// you *must* call the superclass
 	[super shutdown:sender];
@@ -58,8 +60,9 @@
 
 -(void)didReceiveMemoryWarning:(NSNotification*)notification
 {
-	// optionally release any resources that can be dynamically
-	// reloaded once memory is available - such as caches
+	// Clear caches to free memory when the system is under pressure
+	TVECleanupCaches();
+
 	[super didReceiveMemoryWarning:notification];
 }
 
