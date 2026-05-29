@@ -23,6 +23,7 @@
 #import <TitaniumKit/TiViewProxy.h>
 #import "TiUITableViewSectionProxy.h"
 #import "TiUITableViewRowProxy.h"
+#import "TiUITableView+SmoothScrolling.h"
 
 @interface TiUITableView (IndexPathExtension)
 - (NSIndexPath *)indexPathFromInt:(NSInteger)index;
@@ -96,6 +97,13 @@
     NSArray *children = [self valueForKey:@"children"];
     for (TiViewProxy *child in children) {
         [child detachView];
+    }
+
+    // Invalidate height cache for this row so recycled cells with changed
+    // dimensions don't use stale cached heights.
+    TiUITableView *parentTable = self.table;
+    if (parentTable) {
+        [parentTable invalidateCacheForRow:self];
     }
 }
 

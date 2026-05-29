@@ -265,32 +265,13 @@ const CGFloat kRowVisibleThrottleInterval = 0.032; // ~30fps
         return cached.floatValue;
     }
     os_unfair_lock_unlock(cacheLock);
-    
+
     cacheMissCount++;
-    
-    // Check if row has a fixed height set (not SIZE, FILL, or percentage)
-    id heightValue = [row valueForUndefinedKey:@"height"];
-    NSString *heightStr = heightValue ? [heightValue description] : @"";
-    
-    // If height is a fixed number (not "SIZE", "FILL", or percentage like "50%"), use it directly
-    if (![heightStr isEqualToString:@"SIZE"] && 
-        ![heightStr isEqualToString:@"FILL"] && 
-        ![heightStr isEqualToString:@""] &&
-        ![heightStr hasSuffix:@"%"]) {
-        CGFloat fixedHeight = [heightValue floatValue];
-        if (fixedHeight > 0) {
-            os_unfair_lock_lock(cacheLock);
-            [sharedHeightCache setObject:@(fixedHeight) forKey:indexPathKey cost:sizeof(CGFloat)];
-            heightCacheEntryCount++;
-            heightCacheTotalCost += sizeof(CGFloat);
-            [sharedTemplateCache setObject:@(fixedHeight) forKey:templateKey cost:sizeof(CGFloat)];
-            templateCacheEntryCount++;
-            templateCacheTotalCost += sizeof(CGFloat);
-            os_unfair_lock_unlock(cacheLock);
-            return fixedHeight;
-        }
-    }
-    
+
+    // NOTE: Fixed-height fast path lives in tableView:heightForRowAtIndexPath:.
+    // cachedHeightForRow:indexPath: is only reached for dynamic heights (SIZE/FILL/%)
+    // because callers already check fixed heights first.
+
     PerformanceTimer timer = timerStart();
     
     // Use forceResizing:NO on cache miss to avoid redundant layout calculations
