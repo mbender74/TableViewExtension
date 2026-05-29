@@ -12,7 +12,7 @@ A Titanium iOS module that extends `Ti.UI.TableView` with advanced scrolling opt
 - **Pan Gesture Events** – Custom pan gesture recognition on table views
 - **ScrollView Extensions** – Scroll-to-bottom and inset management for scroll views
 
-### Performance Optimizations (v2.2.0+)
+### Performance Optimizations (v2.3.0+)
 - **Intelligent Height Caching** – Template-based and indexPath-based caching with NSCache
 - **Adaptive Preload Queue** – Background height calculation with concurrent GCD queue
 - **Dynamic Cache Limits** – Adjusts based on device memory (3GB+ devices get more)
@@ -24,7 +24,7 @@ A Titanium iOS module that extends `Ti.UI.TableView` with advanced scrolling opt
 - **Cell Reuse Statistics** – Track cell creation vs reuse rates
 - **Cache Invalidation on Reuse** – Stale cached heights are cleared when cells are recycled
 
-### Opaque Row Rendering (v2.2.0+)
+### Opaque Row Rendering (v2.3.0+)
 - **Selection-Aware Opacity** – `opaqueRow` makes subviews opaque for best scroll performance, but temporarily goes transparent during touch so `backgroundSelectedColor` / `backgroundFocusedColor` is visible
 - **Preserves Custom Colors** – When a row has no explicit `backgroundColor`, subviews keep their own `backgroundColor` (no forced color override)
 - **No Green Default** – Rows without `backgroundColor` no longer fallback to an arbitrary green color
@@ -39,12 +39,12 @@ cd ios
 ti build -p ios --build-only
 ```
 
-2. Copy the generated ZIP from `ios/dist/de.marcbender.tableviewextension-iphone-2.2.0.zip` into your app's root folder.
+2. Copy the generated ZIP from `ios/dist/de.marcbender.tableviewextension-iphone-2.3.0.zip` into your app's root folder.
 
 3. Add the module to your `tiapp.xml`:
 ```xml
 <modules>
-  <module version="2.2.0">de.marcbender.tableviewextension</module>
+  <module version="2.3.0">de.marcbender.tableviewextension</module>
 </modules>
 ```
 
@@ -555,7 +555,7 @@ const containerView = Ti.UI.createView({
 row.setSubView(containerView);
 ```
 
-#### `opaqueRow` *(v2.2.0+)*
+#### `opaqueRow`
 Makes the row and its subviews opaque for optimized rendering performance, while preserving selection visibility.
 
 **How it works:**
@@ -652,76 +652,11 @@ scrollView.setContentInsets(
 );
 ```
 
-### View Methods
+### View Properties
 
 #### `opaque` *(v2.3.0+)*
-Makes a view and all its subviews opaque with clipping enabled for optimized rendering performance. This is a property that can be toggled on/off.
 
-**Type:** `Boolean`
-
-**Properties set when `true`:**
-- `opaque = true` - Reduces compositing overhead
-- `masksToBounds = true` - Clips content to bounds
-- `clipsToBounds = true` - Clips subviews to bounds
-
-**Example:**
-```javascript
-const view = Ti.UI.createView({
-  layout: 'vertical',
-  backgroundColor: '#ffffff',
-  children: [
-    Ti.UI.createLabel({ text: 'Title' }),
-    Ti.UI.createLabel({ text: 'Description' })
-  ]
-});
-
-// Enable opaque rendering for better performance
-view.opaque = true;
-
-// Can be toggled off if needed
-view.opaque = false;
-```
-
-**Use in TableViewRows:**
-```javascript
-const row = Ti.UI.createTableViewRow({
-  height: Ti.UI.SIZE
-});
-
-const containerView = Ti.UI.createView({
-  layout: 'vertical',
-  backgroundColor: '#ffffff',
-  opaque: true,  // Makes view and all children opaque
-  children: [
-    Ti.UI.createImageView({ image: 'photo.jpg' }),
-    Ti.UI.createLabel({ text: 'Title' })
-  ]
-});
-
-row.setSubView(containerView);
-```
-
-**Performance Impact:**
-- Reduces GPU compositing overhead
-- Improves scroll FPS by 5-15% for complex views
-- Best used with solid background colors (no transparency)
-
-**Recursive Processing:**
-The property recursively applies to the entire view hierarchy, making all nested subviews opaque automatically.
-
-#### `opaqueView()` *(Legacy)*
-Legacy method version. Prefer using the `opaque` property instead.
-
-**Example:**
-```javascript
-const view = Ti.UI.createView({
-  layout: 'vertical',
-  children: [/* ... */]
-});
-
-// Optimize rendering performance (legacy method)
-view.opaqueView();
-```
+Die `opaque` Eigenschaft für `Ti.UI.View` ist in v2.3.0 entfernt worden. Verwende stattdessen `opaqueRow` auf `Ti.UI.TableViewRow` für optimiertes Rendering.
 
 ## Performance Tuning Guide
 
@@ -936,13 +871,7 @@ win.open();
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `opaqueRow` | Boolean | Make row and all subviews opaque for optimized rendering (v2.3.0+) |
-
-### View Properties
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `opaque` | Boolean | Make view and all recursive subviews opaque for optimized rendering (v2.3.0+) |
+| `opaqueRow` | Boolean | Make row and all subviews opaque for optimized rendering |
 
 ## Technical Details
 
@@ -977,10 +906,13 @@ win.open();
 
 ## Changelog
 
-### v2.2.1 (Current) — OpaqueRow + Smooth Scrolling Fixes
+### v2.3.0 (Current) — Smooth Scrolling & Opaque Row Rendering
+- ✨ **`smoothScrolling` convenience property** — enables all performance optimizations at once
 - ✨ **Selection-Aware `opaqueRow`** — `backgroundSelectedColor` / `backgroundFocusedColor` remain visible during touch while keeping rows fully opaque for scrolling
 - ✨ **`opaqueRow` without explicit `backgroundColor`** — subviews retain their own colors; no arbitrary color override
 - ✨ **Cache invalidation on cell reuse** — stale cached heights are cleared automatically when cells are recycled
+- 🔄 **Removed `opaque` property for `Ti.UI.View`** — use `opaqueRow` on `Ti.UI.TableViewRow` instead
+- 🔄 **Removed `opaqueView()` legacy method**
 - 🔧 **Fixed `hasExplicitRowBg` check** — no longer falls back to TableView `backgroundColor`, preventing rows without explicit `backgroundColor` from being painted with the table color
 - 🔧 **Fixed cache accounting underflow** — counters only decremented when key actually exists in cache
 - 🔧 **Removed redundant lock/unlock pair** in template cache fast path
@@ -989,6 +921,7 @@ win.open();
 - 🔧 **Consolidated all cell swizzling** into `TiUITableViewCell+WithReuse.m` to prevent order-dependent collisions
 - 🔧 **Cache teardown on module unload / memory warning** — frees `sharedHeightCache`, `sharedTemplateCache`, `cacheLock`, and preload queue
 - 🔧 **Removed dead fixed-height code** from `cachedHeightForRow:indexPath:` (already handled upstream)
+- 🔧 **Removed `UICollectionView+autoSnapping.swift`** — no longer needed
 
 ### v2.2.0
 - Added row visibility tracking
