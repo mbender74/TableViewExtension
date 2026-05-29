@@ -60,13 +60,7 @@ Copy the distribution ZIP to your Titanium SDK modules folder:
 
 ### Importing the Module
 
-```javascript
-// ES6+ (recommended)
-import tableviewextension from 'de.marcbender.tableviewextension';
-
-// ES5
-var tableviewextension = require('de.marcbender.tableviewextension');
-```
+Nothing to import — just add it to `tiapp.xml` (see above).
 
 ### Enabling Performance Optimizations
 
