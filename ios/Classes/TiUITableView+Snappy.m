@@ -597,8 +597,11 @@ typedef struct {
     id opaqueRowValue = [row valueForUndefinedKey:@"opaqueRow"];
     BOOL opaqueRow = [TiUtils boolValue:opaqueRowValue def:NO];
     if (opaqueRow) {
-        // Check whether the row has an explicit backgroundColor of its own
-        BOOL hasExplicitRowBg = (color != nil);
+        // Check whether the ROW ITSELF has an explicit backgroundColor.
+        // Do NOT use the fallback chain (rowBackgroundColor / tableView backgroundColor)
+        // because those are not the row's own color.
+        id rowBgValue = [row valueForKey:@"backgroundColor"];
+        BOOL hasExplicitRowBg = (rowBgValue != nil);
 
         if (hasExplicitRowBg) {
             // --- Row has explicit backgroundColor: apply it everywhere ---
@@ -694,14 +697,13 @@ typedef struct {
 
         } else {
             // --- Row has NO explicit backgroundColor: keep subview colors, just set opaque flags ---
-            // Cell and contentView become clear so subviews show through
+            // opaqueRow must NOT affect contentView itself — leave contentView untouched.
+            // Only make cell.background clear so subviews with their own backgroundColor show through.
             cell.backgroundColor = [UIColor clearColor];
-            cell.contentView.backgroundColor = [UIColor clearColor];
 
-            cell.opaque = YES;
-            cell.layer.opaque = YES;
-            cell.contentView.opaque = YES;
-            cell.contentView.layer.opaque = YES;
+            // Do NOT touch contentView.backgroundColor or contentView.opaque.
+            // Subviews that have their own opaque backgroundColor will be opaque,
+            // and because they cover the full row area the compositor is happy.
 
             // Only set opaque flags on subviews, do NOT overwrite their backgroundColor
             for (UIView *subview in cell.contentView.subviews) {
