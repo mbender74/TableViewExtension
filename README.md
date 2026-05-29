@@ -1,4 +1,4 @@
-# TableViewExtension Module
+# TableViewExtension Module for Titanium Mobile iOS
 
 A Titanium iOS module that extends `Ti.UI.TableView` with advanced scrolling optimizations, row visibility tracking, content inset management, intelligent height caching, and selection-aware opaque row rendering.
 
