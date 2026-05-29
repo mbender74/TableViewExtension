@@ -41,7 +41,7 @@ ti build -p ios --build-only
 
 2. Copy the generated ZIP from `ios/dist/de.marcbender.tableviewextension-iphone-2.3.0.zip` into your app's root folder.
 
-3. Add the module to your `tiapp.xml`:
+3. Add the module to your `tiapp.xml` — nothing else needed, just this:
 ```xml
 <modules>
   <module version="2.3.0">de.marcbender.tableviewextension</module>
