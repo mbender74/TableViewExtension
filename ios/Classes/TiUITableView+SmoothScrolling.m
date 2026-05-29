@@ -9,7 +9,21 @@
 #import "TiUITableView+SmoothScrolling.h"
 #import "TiUITableViewRowProxy.h"
 #import "TiUITableViewSectionProxy.h"
+#import "TiUITableViewProxy.h"
 #import "TiUtils.h"
+#import "TiUITableView.h"
+#import <UIKit/UIImageView.h>
+#import <os/lock.h>
+
+// Forward declarations for private TiUITableView methods
+@interface TiUITableView (PrivateMethods)
+- (CGFloat)computeRowWidth;
+- (TiUITableViewRowProxy *)rowForIndexPath:(NSIndexPath *)indexPath;
+@end
+
+// Forward declaration for prefetch delegate
+@interface TiUITableViewRowProxy (ImagePreload)
+@end
 
 // Performance logging - always enabled via NSLog
 
@@ -35,12 +49,18 @@ static inline PerformanceTimer timerStop(PerformanceTimer timer) {
 }
 
 // Static cache for row heights - optimized limits
-static NSCache<NSString *, NSNumber *> *sharedHeightCache;
-static NSCache<NSString *, NSNumber *> *sharedTemplateCache; // Template-based cache
+static NSCache<NSNumber *, NSNumber *> *sharedHeightCache;
+static NSCache<NSNumber *, NSNumber *> *sharedTemplateCache; // Template-based cache
 static NSUInteger cacheHitCount = 0;
 static NSUInteger cacheMissCount = 0;
 static NSUInteger templateHitCount = 0; // Template cache hits
 static CGFloat totalHeightCalculationTime = 0;
+
+// Track cache stats manually (iOS 26.2 removed count/totalCost from NSCache)
+static NSUInteger heightCacheEntryCount = 0;
+static NSUInteger heightCacheTotalCost = 0;
+static NSUInteger templateCacheEntryCount = 0;
+static NSUInteger templateCacheTotalCost = 0;
 
 // Cell reuse statistics (visible to other files)
 NSUInteger cellReuseCount;
@@ -58,18 +78,26 @@ static const NSInteger kFPSSampleWindow = 60;
 static CFAbsoluteTime frameTimestamps[60];
 static NSInteger fpsSampleIndex = 0;
 
-// Preload queue configuration - adaptive based on scroll speed
-static NSInteger kPreloadAheadRows = 5;   // Dynamic: 3-10 based on velocity
-static NSInteger kPreloadBehindRows = 3;  // Dynamic: 2-5 based on velocity
-static dispatch_queue_t preloadQueue = nil;
+// Preload queue configuration - adaptive based on scroll speed (thread-safe with dispatch_once)
+static dispatch_once_t preloadQueueOnce;
+static dispatch_queue_t preloadQueue;
+
+// Adaptive preload counts (updated on main thread, read on background)
+static volatile NSInteger gPreloadAheadRows = 5;
+static volatile NSInteger gPreloadBehindRows = 3;
+
 static BOOL isPreloading = NO;
 static NSInteger lastVisibleRow = -1;
-static NSInteger scrollEventCount = 0; // Counter to throttle preload calls
-static CGFloat lastScrollVelocity = 0; // Track scroll speed
+static NSInteger scrollEventCount = 0;
+static CGFloat lastScrollVelocity = 0;
 
-// Scroll event throttling
-static CFAbsoluteTime lastRowVisibleTime = 0;
-static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
+// Cache access mutex for thread safety
+static os_unfair_lock_t cacheLock = nil;
+
+// Scroll event throttling - centralized (used by Snappy too)
+CFAbsoluteTime lastRowVisibleTime = 0;
+CFAbsoluteTime lastRowNotVisibleTime = 0;
+const CGFloat kRowVisibleThrottleInterval = 0.032; // ~30fps
 
 @implementation TiUITableView (SmoothScrolling)
 
@@ -83,27 +111,36 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
         uint64_t memoryMB = totalMemory / (1024 * 1024);
         
         // Adaptive cache limits based on device memory
-        NSUInteger cacheLimit = (memoryMB > 3000) ? 3000 : 2000; // 3GB+ devices get more cache
-        NSUInteger costLimit = (memoryMB > 3000) ? 30 : 20; // MB
+        NSUInteger cacheLimit = (memoryMB > 3000) ? 3000 : 2000;
+        NSUInteger costLimit = (memoryMB > 3000) ? 30 : 20;
         
         sharedHeightCache = [[NSCache alloc] init];
         sharedHeightCache.countLimit = cacheLimit;
         sharedHeightCache.totalCostLimit = costLimit * 1024 * 1024;
         
-        // Template cache - stores heights by row configuration
         sharedTemplateCache = [[NSCache alloc] init];
         sharedTemplateCache.countLimit = (memoryMB > 3000) ? 750 : 500;
         sharedTemplateCache.totalCostLimit = (costLimit / 4) * 1024 * 1024;
         
-        // Concurrent preload queue for parallel height calculation
-        if (preloadQueue == nil) {
+        // Thread-safe preload queue
+        dispatch_once(&preloadQueueOnce, ^{
             preloadQueue = dispatch_queue_create("de.marcbender.tableviewextension.preload", DISPATCH_QUEUE_CONCURRENT);
+        });
+        
+        // Initialize cache lock
+        if (cacheLock == nil) {
+            cacheLock = malloc(sizeof(os_unfair_lock_t));
+            *cacheLock = OS_UNFAIR_LOCK_INIT;
         }
         
         cacheHitCount = 0;
         cacheMissCount = 0;
         templateHitCount = 0;
         totalHeightCalculationTime = 0;
+        heightCacheEntryCount = 0;
+        heightCacheTotalCost = 0;
+        templateCacheEntryCount = 0;
+        templateCacheTotalCost = 0;
         lastVisibleRow = -1;
     }
 }
@@ -111,19 +148,29 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
 - (void)invalidateHeightCache
 {
     if (sharedHeightCache) {
+        os_unfair_lock_lock(cacheLock);
         [sharedHeightCache removeAllObjects];
         [sharedTemplateCache removeAllObjects];
         cacheHitCount = 0;
         cacheMissCount = 0;
         templateHitCount = 0;
+        heightCacheEntryCount = 0;
+        heightCacheTotalCost = 0;
+        templateCacheEntryCount = 0;
+        templateCacheTotalCost = 0;
+        os_unfair_lock_unlock(cacheLock);
     }
 }
 
 - (void)invalidateHeightCacheForIndexPath:(NSIndexPath *)indexPath
 {
     if (sharedHeightCache) {
-        NSString *key = [self cacheKeyForIndexPath:indexPath];
+        os_unfair_lock_lock(cacheLock);
+        NSNumber *key = [self cacheKeyForIndexPath:indexPath];
         [sharedHeightCache removeObjectForKey:key];
+        heightCacheEntryCount--;
+        heightCacheTotalCost -= sizeof(CGFloat);
+        os_unfair_lock_unlock(cacheLock);
     }
 }
 
@@ -153,63 +200,71 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
         @"hits": @(cacheHitCount),
         @"misses": @(cacheMissCount),
         @"templateHits": @(templateHitCount),
-        @"count": @([sharedHeightCache count]),
-        @"totalCost": @([sharedHeightCache totalCost]),
+        @"count": @(heightCacheEntryCount),
+        @"totalCost": @(heightCacheTotalCost),
         @"hitRate": @(hitRate),
         @"avgCalculationTime": @(avgTime),
         @"totalCalculationTime": @(totalHeightCalculationTime)
     };
 }
 
-- (NSString *)cacheKeyForIndexPath:(NSIndexPath *)indexPath
+- (NSNumber *)cacheKeyForIndexPath:(NSIndexPath *)indexPath
 {
-    // Use NSNumber pointer as key - faster than NSString allocation
-    // Combine row + section into single UInt64
+    // Use NSNumber with combined UInt64 - no string allocation
     UInt64 combined = ((UInt64)indexPath.section << 32) | (UInt64)indexPath.row;
-    return [NSString stringWithFormat:@"%llx", combined];
+    return @(combined);
 }
 
-- (NSString *)templateKeyForRow:(TiUITableViewRowProxy *)row
+- (NSNumber *)templateKeyForRow:(TiUITableViewRowProxy *)row
 {
-    // Generate key from layout-relevant properties only
-    // Use hash of properties for fast lookup without string allocation
+    // Generate key from layout-relevant properties - no string allocation
     id heightValue = [row valueForUndefinedKey:@"height"];
     id widthValue = [row valueForUndefinedKey:@"width"];
     NSString *className = [row tableClass];
     
-    // Combine hashes - collision-safe with modulo
+    // Combine hashes into single UInt64
     NSUInteger hHash = heightValue ? [heightValue hash] : 0;
     NSUInteger wHash = widthValue ? [widthValue hash] : 1;
     NSUInteger cHash = className ? [className hash] : 2;
     
-    // Use all 3 hashes to minimize collisions
-    return [NSString stringWithFormat:@"%lx-%lx-%lx", hHash, wHash, cHash];
+    // XOR combination - fast, collision-safe enough for this use case
+    UInt64 combined = ((UInt64)hHash << 32) ^ ((UInt64)wHash << 16) ^ (UInt64)cHash;
+    return @(combined);
 }
 
 - (CGFloat)cachedHeightForRow:(TiUITableViewRowProxy *)row
                    indexPath:(NSIndexPath *)indexPath
 {
-    // First try template cache (configuration-based)
-    NSString *templateKey = [self templateKeyForRow:row];
-    NSNumber *templateCached = [sharedTemplateCache objectForKey:templateKey];
+    NSNumber *templateKey = [self templateKeyForRow:row];
+    NSNumber *indexPathKey = [self cacheKeyForIndexPath:indexPath];
     
+    // First try template cache (configuration-based) - thread-safe
+    os_unfair_lock_lock(cacheLock);
+    NSNumber *templateCached = [sharedTemplateCache objectForKey:templateKey];
     if (templateCached) {
         templateHitCount++;
         cacheHitCount++;
-        // Also store in indexPath cache for faster future access
-        NSString *key = [self cacheKeyForIndexPath:indexPath];
-        [sharedHeightCache setObject:templateCached forKey:key cost:sizeof(CGFloat)];
+        os_unfair_lock_unlock(cacheLock);
+        // Lazy: only store in indexPath cache if not already there
+        NSNumber *existing = [sharedHeightCache objectForKey:indexPathKey];
+        if (!existing) {
+            os_unfair_lock_lock(cacheLock);
+            [sharedHeightCache setObject:templateCached forKey:indexPathKey cost:sizeof(CGFloat)];
+            heightCacheEntryCount++;
+            heightCacheTotalCost += sizeof(CGFloat);
+            os_unfair_lock_unlock(cacheLock);
+        }
         return templateCached.floatValue;
     }
     
     // Try indexPath cache
-    NSString *key = [self cacheKeyForIndexPath:indexPath];
-    NSNumber *cached = [sharedHeightCache objectForKey:key];
-    
+    NSNumber *cached = [sharedHeightCache objectForKey:indexPathKey];
     if (cached) {
         cacheHitCount++;
+        os_unfair_lock_unlock(cacheLock);
         return cached.floatValue;
     }
+    os_unfair_lock_unlock(cacheLock);
     
     cacheMissCount++;
     
@@ -224,9 +279,14 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
         ![heightStr hasSuffix:@"%"]) {
         CGFloat fixedHeight = [heightValue floatValue];
         if (fixedHeight > 0) {
-            // Store in cache for future access
-            [sharedHeightCache setObject:@(fixedHeight) forKey:key cost:sizeof(CGFloat)];
+            os_unfair_lock_lock(cacheLock);
+            [sharedHeightCache setObject:@(fixedHeight) forKey:indexPathKey cost:sizeof(CGFloat)];
+            heightCacheEntryCount++;
+            heightCacheTotalCost += sizeof(CGFloat);
             [sharedTemplateCache setObject:@(fixedHeight) forKey:templateKey cost:sizeof(CGFloat)];
+            templateCacheEntryCount++;
+            templateCacheTotalCost += sizeof(CGFloat);
+            os_unfair_lock_unlock(cacheLock);
             return fixedHeight;
         }
     }
@@ -240,9 +300,14 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
     timer = timerStop(timer);
     totalHeightCalculationTime += timer.durationMs;
     
-    // Store in both caches
-    [sharedHeightCache setObject:@(height) forKey:key cost:sizeof(CGFloat)];
+    os_unfair_lock_lock(cacheLock);
+    [sharedHeightCache setObject:@(height) forKey:indexPathKey cost:sizeof(CGFloat)];
+    heightCacheEntryCount++;
+    heightCacheTotalCost += sizeof(CGFloat);
     [sharedTemplateCache setObject:@(height) forKey:templateKey cost:sizeof(CGFloat)];
+    templateCacheEntryCount++;
+    templateCacheTotalCost += sizeof(CGFloat);
+    os_unfair_lock_unlock(cacheLock);
     
     // Only log slow calculations (>10ms)
     if (timer.durationMs > 10.0) {
@@ -295,18 +360,20 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
     BOOL (^needsHeightCalc)(TiUITableViewRowProxy *) = ^(TiUITableViewRowProxy *row) {
         id heightValue = [row valueForUndefinedKey:@"height"];
         NSString *heightStr = heightValue ? [heightValue description] : @"";
-        return [heightStr isEqualToString:@"SIZE"] || 
-               [heightStr isEqualToString:@"FILL"] || 
-               [heightStr hasSuffix:@"%"];
+        BOOL result = [heightStr isEqualToString:@"SIZE"] || 
+                      [heightStr isEqualToString:@"FILL"] || 
+                      [heightStr hasSuffix:@"%"];
+        return result;
     };
     
-    // Preload rows ahead (concurrent)
+    // Preload rows ahead (concurrent) - use volatile globals
+    NSInteger aheadLimit = gPreloadAheadRows;
     NSInteger aheadCount = 0;
-    for (NSInteger s = currentSection; s < sections.count && aheadCount < kPreloadAheadRows; s++) {
+    for (NSInteger s = currentSection; s < sections.count && aheadCount < aheadLimit; s++) {
         TiUITableViewSectionProxy *section = sections[s];
-        NSInteger sectionRowCount = [section rows] count;
+        NSInteger sectionRowCount = [(NSArray *)[section rows] count];
         
-        for (NSInteger r = (s == currentSection ? currentRow + 1 : 0); r < sectionRowCount && aheadCount < kPreloadAheadRows; r++) {
+        for (NSInteger r = (s == currentSection ? currentRow + 1 : 0); r < sectionRowCount && aheadCount < aheadLimit; r++) {
             NSIndexPath *path = [NSIndexPath indexPathForRow:r inSection:s];
             TiUITableViewRowProxy *row = [self rowForIndexPath:path];
             if (row && needsHeightCalc(row)) {
@@ -319,13 +386,14 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
     }
     
     // Preload rows behind (concurrent)
+    NSInteger behindLimit = gPreloadBehindRows;
     NSInteger behindCount = 0;
-    for (NSInteger s = currentSection; s >= 0 && behindCount < kPreloadBehindRows; s--) {
+    for (NSInteger s = currentSection; s >= 0 && behindCount < behindLimit; s--) {
         TiUITableViewSectionProxy *section = sections[s];
         NSArray *rows = [section rows];
         NSInteger sectionRowCount = rows.count;
         
-        for (NSInteger r = (s == currentSection ? currentRow - 1 : sectionRowCount - 1); r >= 0 && behindCount < kPreloadBehindRows; r--) {
+        for (NSInteger r = (s == currentSection ? currentRow - 1 : sectionRowCount - 1); r >= 0 && behindCount < behindLimit; r--) {
             NSIndexPath *path = [NSIndexPath indexPathForRow:r inSection:s];
             TiUITableViewRowProxy *row = [self rowForIndexPath:path];
             if (row && needsHeightCalc(row)) {
@@ -367,11 +435,10 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
 
 - (void)enableImagePreloading
 {
-    // Use UITableView prefetching API (iOS 10+)
-    tableview.prefetchingEnabled = YES;
-    
-    // Set up prefetch delegate for complex layouts
-    tableview.prefetchDataSource = (id<UITableViewPrefetchDataSource>)self;
+    // Use UITableView prefetching API (iOS 15+)
+    if (@available(iOS 15.0, *)) {
+        tableview.prefetchingEnabled = YES;
+    }
     
     NSLog(@"[TableViewExtension/Smooth] Image preloading enabled (including nested views)");
 }
@@ -395,11 +462,13 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
 {
     for (id view in views) {
         // Check if it's an ImageView
-        if ([view isKindOfClass:[TiUIImageView class]]) {
+        if ([view isKindOfClass:[UIImageView class]]) {
             id imageValue = [view valueForUndefinedKey:@"image"];
             if ([imageValue isKindOfClass:[NSString class]]) {
-                // Force image load into memory cache
-                [UIImage imageNamed:imageValue];
+                // Async image load - don't block main thread
+                dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
+                    [UIImage imageNamed:imageValue];
+                });
             }
         }
         
@@ -426,11 +495,17 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
 
 - (void)didReceiveMemoryWarning
 {
-    // Clear caches to free memory
+    // Clear caches to free memory - thread-safe
     if (sharedHeightCache) {
-        NSUInteger beforeCount = [sharedHeightCache count];
+        os_unfair_lock_lock(cacheLock);
+        NSUInteger beforeCount = heightCacheEntryCount;
         [sharedHeightCache removeAllObjects];
         [sharedTemplateCache removeAllObjects];
+        heightCacheEntryCount = 0;
+        heightCacheTotalCost = 0;
+        templateCacheEntryCount = 0;
+        templateCacheTotalCost = 0;
+        os_unfair_lock_unlock(cacheLock);
         
         NSLog(@"[TableViewExtension/Smooth] Memory warning: cleared %ld height cache entries", beforeCount);
     }
@@ -461,18 +536,24 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
 - (void)invalidateCacheForRow:(TiUITableViewRowProxy *)row
 {
     if (sharedHeightCache) {
+        os_unfair_lock_lock(cacheLock);
         // Invalidate template cache entry
-        NSString *templateKey = [self templateKeyForRow:row];
+        NSNumber *templateKey = [self templateKeyForRow:row];
         [sharedTemplateCache removeObjectForKey:templateKey];
+        templateCacheEntryCount--;
+        templateCacheTotalCost -= sizeof(CGFloat);
         
         // Also invalidate all indexPath entries for this row
         for (NSIndexPath *path in [tableview indexPathsForVisibleRows]) {
             TiUITableViewRowProxy *rowProxy = [self rowForIndexPath:path];
             if (rowProxy == row) {
-                NSString *key = [self cacheKeyForIndexPath:path];
+                NSNumber *key = [self cacheKeyForIndexPath:path];
                 [sharedHeightCache removeObjectForKey:key];
+                heightCacheEntryCount--;
+                heightCacheTotalCost -= sizeof(CGFloat);
             }
         }
+        os_unfair_lock_unlock(cacheLock);
     }
 }
 
@@ -484,16 +565,21 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
     CGFloat hitRate = totalRequests > 0 ? (CGFloat)cacheHitCount / totalRequests * 100.0 : 0;
     CGFloat avgTime = cacheMissCount > 0 ? totalHeightCalculationTime / cacheMissCount : 0;
     
+    NSUInteger totalCells = cellReuseCount + cellCreateCount;
+    CGFloat reuseRate = totalCells > 0 ? (CGFloat)cellReuseCount / totalCells * 100.0 : 0;
+    
     NSLog(@"[TableViewExtension/Smooth] === Performance Report ===");
-    NSLog(@"[TableViewExtension/Smooth] Scroll FPS: %.1f", fps);
+    NSLog(@"[TableViewExtension/Smooth] Scroll FPS: %.1f (frames: %ld)", fps, (long)frameCount);
     NSLog(@"[TableViewExtension/Smooth] Cache Hit Rate: %.1f%% (%ld/%ld, %ld template)", 
          hitRate, (long)cacheHitCount, (long)totalRequests, (long)templateHitCount);
-    NSLog(@"[TableViewExtension/Smooth] Avg Height Calc: %.2fms", avgTime);
+    NSLog(@"[TableViewExtension/Smooth] Avg Height Calc: %.2fms (total: %.2fms)", avgTime, totalHeightCalculationTime);
     NSLog(@"[TableViewExtension/Smooth] Cache Size: %ld entries (%.1fKB), Templates: %ld (%.1fKB)",
-         (long)[sharedHeightCache count], 
-         (double)[sharedHeightCache totalCost] / 1024.0,
-         (long)[sharedTemplateCache count],
-         (double)[sharedTemplateCache totalCost] / 1024.0);
+         (long)heightCacheEntryCount, 
+         (double)heightCacheTotalCost / 1024.0,
+         (long)templateCacheEntryCount,
+         (double)templateCacheTotalCost / 1024.0);
+    NSLog(@"[TableViewExtension/Smooth] Cell Reuse: %ld reused, %ld created (%.1f%% reuse rate)",
+         (long)cellReuseCount, (long)cellCreateCount, reuseRate);
     NSLog(@"[TableViewExtension/Smooth] ============================");
 }
 
@@ -505,7 +591,7 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
     return @{
         @"fps": @(fps),
         @"frameCount": @(frameCount),
-        @"cacheEntries": @(sharedHeightCache ? [sharedHeightCache count] : @0),
+        @"cacheEntries": @(sharedHeightCache ? heightCacheEntryCount : 0),
         @"cellReuseCount": @(cellReuseCount),
         @"cellCreateCount": @(cellCreateCount),
         @"cellReuseRate": @(reuseRate)
@@ -558,10 +644,24 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
 // Scroll performance monitoring
 @implementation TiUITableView (SmoothScrollingPerformance)
 
+- (NSDictionary *)eventObjectForScrollView:(UIScrollView *)scrollView
+{
+    // Get scroll velocity from pan gesture recognizer
+    UIPanGestureRecognizer *pan = scrollView.panGestureRecognizer;
+    CGPoint velocity = [pan velocityInView:scrollView.superview];
+    
+    return [NSDictionary dictionaryWithObjectsAndKeys:
+        [TiUtils pointToDictionary:scrollView.contentOffset], @"contentOffset",
+        [TiUtils sizeToDictionary:scrollView.contentSize], @"contentSize",
+        [TiUtils sizeToDictionary:tableview.bounds.size], @"size",
+        [TiUtils pointToDictionary:velocity], @"velocity",
+        nil];
+}
+
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView
 {
     if ([self.nextResponder respondsToSelector:@selector(scrollViewDidScroll:)]) {
-        [self.nextResponder scrollViewDidScroll:scrollView];
+        [(id)self.nextResponder scrollViewDidScroll:scrollView];
     }
     
     CFAbsoluteTime currentTime = CFAbsoluteTimeGetCurrent();
@@ -575,38 +675,67 @@ static const CGFloat kRowVisibleThrottleInterval = 0.016; // ~60fps
     
     frameCount++;
     
-    // Adaptive preload: adjust based on scroll velocity
-    lastScrollVelocity = scrollView.velocity.y;
-    CGFloat speed = fabs(lastScrollVelocity);
-    
-    // Fast scroll: more preload rows
-    if (speed > 1000) {
-        kPreloadAheadRows = 10;
-        kPreloadBehindRows = 5;
-    } else if (speed > 500) {
-        kPreloadAheadRows = 7;
-        kPreloadBehindRows = 4;
-    } else {
-        kPreloadAheadRows = 5;
-        kPreloadBehindRows = 3;
+    // Adaptive preload: adjust based on scroll velocity (throttled to every 3rd frame)
+    if (frameCount % 3 == 0) {
+        UIPanGestureRecognizer *pan = scrollView.panGestureRecognizer;
+        CGPoint velocity = [pan velocityInView:scrollView.superview];
+        lastScrollVelocity = velocity.y;
+        
+        CGFloat speed = fabs(lastScrollVelocity);
+        
+        // Update volatile globals (main thread only)
+        if (speed > 1000) {
+            gPreloadAheadRows = 10;
+            gPreloadBehindRows = 5;
+        } else if (speed > 500) {
+            gPreloadAheadRows = 7;
+            gPreloadBehindRows = 4;
+        } else {
+            gPreloadAheadRows = 5;
+            gPreloadBehindRows = 3;
+        }
     }
     
     // Store frame timestamp for rolling FPS calculation
     frameTimestamps[fpsSampleIndex % kFPSSampleWindow] = currentTime;
     fpsSampleIndex++;
     
-    // Calculate smoothed FPS from rolling window (only method used)
+    // Calculate smoothed FPS from rolling window with better guards
     if (fpsSampleIndex >= kFPSSampleWindow) {
         CFAbsoluteTime oldestTime = frameTimestamps[(fpsSampleIndex - kFPSSampleWindow) % kFPSSampleWindow];
         CFAbsoluteTime newestTime = frameTimestamps[(fpsSampleIndex - 1) % kFPSSampleWindow];
         CGFloat totalTime = (newestTime - oldestTime) * 1000.0;
-        if (totalTime > 0) {
+        if (totalTime > 1.0) { // Guard: must be at least 1ms to avoid division issues
             fps = (CGFloat)(kFPSSampleWindow - 1) / (totalTime / 1000.0);
         }
     }
     
+    // Fire scroll event to JavaScript
+    if ([self.proxy _hasListeners:@"scroll"]) {
+        [self.proxy fireEvent:@"scroll" withObject:[self eventObjectForScrollView:scrollView]];
+    }
+    
     // Trigger preload queue
     [self preloadRowHeightsIfNeeded];
+}
+
+- (void)scrollViewDidEndDragging:(UIScrollView *)scrollView willDecelerate:(BOOL)decelerate
+{
+    if ([self.nextResponder respondsToSelector:@selector(scrollViewDidEndDragging:willDecelerate:)]) {
+        [(id)self.nextResponder scrollViewDidEndDragging:scrollView willDecelerate:decelerate];
+    }
+}
+
+- (void)scrollViewDidEndDecelerating:(UIScrollView *)scrollView
+{
+    if ([self.nextResponder respondsToSelector:@selector(scrollViewDidEndDecelerating:)]) {
+        [(id)self.nextResponder scrollViewDidEndDecelerating:scrollView];
+    }
+    
+    // Fire scrollend event to JavaScript
+    if ([self.proxy _hasListeners:@"scrollend"]) {
+        [self.proxy fireEvent:@"scrollend" withObject:[self eventObjectForScrollView:scrollView]];
+    }
 }
 
 @end

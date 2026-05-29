@@ -11,6 +11,11 @@
 extern NSUInteger cellReuseCount;
 extern NSUInteger cellCreateCount;
 
+// Scroll event throttling (shared with Snappy)
+extern CFAbsoluteTime lastRowVisibleTime;
+extern CFAbsoluteTime lastRowNotVisibleTime;
+extern const CGFloat kRowVisibleThrottleInterval;
+
 @interface TiUITableView (SmoothScrolling)
 
 #pragma mark - Height Caching

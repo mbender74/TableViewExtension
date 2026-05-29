@@ -19,13 +19,4 @@
   return @"Ti.UI.ViewExtended";
 }
 
-#pragma mark Public APIs
-
--(void)opaqueView:(id)args
-{
-   // TiThreadPerformOnMainThread(^{
-        [(TiUIView *)[self view] opaqueView];
-   // }, YES);
-}
-
 @end

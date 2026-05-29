@@ -25,5 +25,6 @@
 #pragma mark Public APIs
 -(NSInteger)isVisible:(id)args;
 -(NSInteger)getTopOffset:(id)args;
+- (void)setOpaqueRow:(id)value;
 - (void)prepareTableRowForReuse;
 @end

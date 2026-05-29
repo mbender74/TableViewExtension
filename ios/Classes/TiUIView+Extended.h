@@ -11,6 +11,9 @@
 
 @interface TiUIView (Extended)
 
--(void)opaqueView;
+@end
 
+// Extension for recursive subviews
+@interface UIView (RecursiveSubviews)
+- (NSArray<UIView *> *)recursiveSubviews;
 @end

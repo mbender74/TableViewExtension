@@ -15,10 +15,8 @@
 #import "TiUITableViewRowProxy.h"
 #import "TiUITableViewRowProxy+WithVisibility.h"
 
-// Scroll event throttling - separate variables for visible/not-visible
-static CFAbsoluteTime lastRowVisibleTime = 0;
-static CFAbsoluteTime lastRowNotVisibleTime = 0;
-static const CGFloat kRowVisibleThrottleInterval = 0.032; // ~30fps (reduced from 60fps to prevent jank)
+// Scroll event throttling - imported from header
+#import "TiUITableView+SmoothScrolling.h"
 
 // Debug logging macro
 #ifndef DEBUG
@@ -264,6 +262,35 @@ typedef struct {
 //          [row.section reorderRows];
 //    }];
 //}
+
+#pragma mark - Opaque Helpers
+
+- (UIColor *)opaqueColorFrom:(UIColor *)color
+{
+    if (!color) {
+        return [UIColor whiteColor];
+    }
+    CGFloat r, g, b, a;
+    if ([color getRed:&r green:&g blue:&b alpha:&a] && a < 1.0) {
+        return [UIColor colorWithRed:r green:g blue:b alpha:1.0];
+    }
+    return color;
+}
+
+- (void)makeViewOpaque:(UIView *)view withColor:(UIColor *)color
+{
+    if (!view) {
+        return;
+    }
+    view.backgroundColor = color;
+    view.opaque = YES;
+    view.layer.opaque = YES;
+    view.layer.backgroundColor = color.CGColor;
+    view.layer.masksToBounds = YES;
+    for (UIView *subview in view.subviews) {
+        [self makeViewOpaque:subview withColor:color];
+    }
+}
 
 #pragma mark Public APIs
 
@@ -514,17 +541,17 @@ typedef struct {
 - (void)tableView:(UITableView *)thisTableView willDisplayCell:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath
 {
     NSIndexPath *index = indexPath;
-    
+
     // Cache row lookup - use for both background color and event
     TiUITableViewRowProxy *row = [self rowForIndexPath:index];
-    
+
     // Track cell reuse
     if (cell.reuseIdentifier) {
         cellReuseCount++;
     } else {
         cellCreateCount++;
     }
-    
+
     // Set background color (no dispatch needed - already on main thread)
     NSString *color = [row valueForKey:@"backgroundColor"];
     if (color == nil) {
@@ -538,6 +565,115 @@ typedef struct {
         cellColor = [UIColor whiteColor];
     }
     cell.backgroundColor = cellColor;
+
+    // Make cell opaque if opaqueRow is set
+    id opaqueRowValue = [row valueForUndefinedKey:@"opaqueRow"];
+    BOOL opaqueRow = [TiUtils boolValue:opaqueRowValue def:NO];
+    if (opaqueRow) {
+        // Ensure cell color is fully opaque (no alpha blending)
+        cellColor = [self opaqueColorFrom:cellColor];
+
+        // Resolve selected/focused colors so opaqueRow does not overwrite them with cellColor
+        id selectedBgValue = [row valueForKey:@"backgroundSelectedColor"];
+        if (selectedBgValue == nil) {
+            selectedBgValue = [row valueForKey:@"selectedBackgroundColor"]; // legacy
+        }
+        UIColor *selectedColor = [self opaqueColorFrom:[TiUtils colorValue:selectedBgValue].color];
+
+        id focusedBgValue = [row valueForKey:@"backgroundFocusedColor"];
+        // focusedColor is not applied here because UITableViewCell has no focusedBackgroundView.
+        // If you need focus support, let me know and I’ll add a custom focus observer.
+        (void)[self opaqueColorFrom:[TiUtils colorValue:focusedBgValue].color];
+
+        // backgroundView: respect backgroundImage and backgroundGradient if set.
+        // Gradient and images are not "opaque" by nature, so we only force the color
+        // if neither is present.
+        BOOL hasGradient = [row valueForKey:@"backgroundGradient"] != nil;
+        BOOL hasBgImage  = [row valueForKey:@"backgroundImage"] != nil;
+        if (cell.backgroundView && !hasGradient && !hasBgImage) {
+            cell.backgroundView.opaque = YES;
+            cell.backgroundView.backgroundColor = cellColor;
+            cell.backgroundView.layer.opaque = YES;
+            cell.backgroundView.layer.backgroundColor = cellColor.CGColor;
+            cell.backgroundView.layer.masksToBounds = YES;
+        }
+
+        // selectedBackgroundView – use selectedColor if available, else fall back to cellColor.
+        // Respect selectedBackgroundGradient / backgroundSelectedImage if present.
+        BOOL hasSelectedGradient = [row valueForKey:@"selectedBackgroundGradient"] != nil ||
+                                   [row valueForKey:@"backgroundSelectedGradient"] != nil;
+        BOOL hasSelectedBgImage  = [row valueForKey:@"backgroundSelectedImage"] != nil ||
+                                   [row valueForKey:@"selectedBackgroundImage"] != nil;
+        if (cell.selectedBackgroundView && !hasSelectedGradient && !hasSelectedBgImage) {
+            UIColor *selColor = selectedColor ?: cellColor;
+            cell.selectedBackgroundView.opaque = YES;
+            cell.selectedBackgroundView.backgroundColor = selColor;
+            cell.selectedBackgroundView.layer.opaque = YES;
+            cell.selectedBackgroundView.layer.backgroundColor = selColor.CGColor;
+            cell.selectedBackgroundView.layer.masksToBounds = YES;
+        }
+
+        // Make cell itself opaque
+        cell.opaque = YES;
+        cell.layer.opaque = YES;
+        cell.layer.backgroundColor = cellColor.CGColor;
+        cell.layer.masksToBounds = YES;
+
+        // Make contentView opaque
+        cell.contentView.backgroundColor = cellColor;
+        cell.contentView.opaque = YES;
+        cell.contentView.layer.opaque = YES;
+        cell.contentView.layer.backgroundColor = cellColor.CGColor;
+        cell.contentView.layer.masksToBounds = YES;
+
+        // Make textLabel opaque (UILabel defaults to transparent background)
+        UILabel *textLabel = [cell textLabel];
+        if (textLabel) {
+            textLabel.backgroundColor = cellColor;
+            textLabel.opaque = YES;
+            textLabel.layer.opaque = YES;
+            textLabel.layer.backgroundColor = cellColor.CGColor;
+            textLabel.layer.masksToBounds = YES;
+        }
+
+        // Make detailTextLabel opaque (if present)
+        UILabel *detailTextLabel = [cell detailTextLabel];
+        if (detailTextLabel) {
+            detailTextLabel.backgroundColor = cellColor;
+            detailTextLabel.opaque = YES;
+            detailTextLabel.layer.opaque = YES;
+            detailTextLabel.layer.backgroundColor = cellColor.CGColor;
+            detailTextLabel.layer.masksToBounds = YES;
+        }
+
+        // Make imageView opaque
+        UIImageView *imageView = [cell imageView];
+        if (imageView) {
+            imageView.backgroundColor = cellColor;
+            imageView.opaque = YES;
+            imageView.layer.opaque = YES;
+            imageView.layer.backgroundColor = cellColor.CGColor;
+            imageView.layer.masksToBounds = YES;
+        }
+
+        // Make accessoryView opaque
+        UIView *accessoryView = [cell accessoryView];
+        if (accessoryView) {
+            accessoryView.backgroundColor = cellColor;
+            accessoryView.opaque = YES;
+            accessoryView.layer.opaque = YES;
+            accessoryView.layer.backgroundColor = cellColor.CGColor;
+            accessoryView.layer.masksToBounds = YES;
+        }
+
+        // Recursively make all subviews opaque, including nested custom views
+        for (UIView *subview in cell.contentView.subviews) {
+            [self makeViewOpaque:subview withColor:cellColor];
+        }
+
+        // Re-apply corrected color to cell.backgroundColor so it matches the opaque layers
+        cell.backgroundColor = cellColor;
+    }
     
     // Fire rowvisible event with throttling (~30fps to prevent jank)
     CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
