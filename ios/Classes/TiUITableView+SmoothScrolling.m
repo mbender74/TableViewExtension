@@ -167,9 +167,12 @@ const CGFloat kRowVisibleThrottleInterval = 0.032; // ~30fps
     if (sharedHeightCache) {
         os_unfair_lock_lock(cacheLock);
         NSNumber *key = [self cacheKeyForIndexPath:indexPath];
-        [sharedHeightCache removeObjectForKey:key];
-        heightCacheEntryCount--;
-        heightCacheTotalCost -= sizeof(CGFloat);
+        // Only decrement accounting if the key actually existed
+        if ([sharedHeightCache objectForKey:key] != nil) {
+            [sharedHeightCache removeObjectForKey:key];
+            heightCacheEntryCount--;
+            heightCacheTotalCost -= sizeof(CGFloat);
+        }
         os_unfair_lock_unlock(cacheLock);
     }
 }
@@ -238,22 +241,19 @@ const CGFloat kRowVisibleThrottleInterval = 0.032; // ~30fps
     NSNumber *templateKey = [self templateKeyForRow:row];
     NSNumber *indexPathKey = [self cacheKeyForIndexPath:indexPath];
     
-    // First try template cache (configuration-based) - thread-safe
+    // First try template cache (configuration-based) - single lock/unlock
     os_unfair_lock_lock(cacheLock);
     NSNumber *templateCached = [sharedTemplateCache objectForKey:templateKey];
     if (templateCached) {
         templateHitCount++;
         cacheHitCount++;
-        os_unfair_lock_unlock(cacheLock);
         // Lazy: only store in indexPath cache if not already there
-        NSNumber *existing = [sharedHeightCache objectForKey:indexPathKey];
-        if (!existing) {
-            os_unfair_lock_lock(cacheLock);
+        if ([sharedHeightCache objectForKey:indexPathKey] == nil) {
             [sharedHeightCache setObject:templateCached forKey:indexPathKey cost:sizeof(CGFloat)];
             heightCacheEntryCount++;
             heightCacheTotalCost += sizeof(CGFloat);
-            os_unfair_lock_unlock(cacheLock);
         }
+        os_unfair_lock_unlock(cacheLock);
         return templateCached.floatValue;
     }
     
@@ -465,13 +465,25 @@ const CGFloat kRowVisibleThrottleInterval = 0.032; // ~30fps
         if ([view isKindOfClass:[UIImageView class]]) {
             id imageValue = [view valueForUndefinedKey:@"image"];
             if ([imageValue isKindOfClass:[NSString class]]) {
-                // Async image load - don't block main thread
+                NSString *path = (NSString *)imageValue;
+                // Use imageWithContentsOfFile: instead of imageNamed: for thread safety.
+                // imageNamed: is not guaranteed to be thread-safe and may hit the main thread internally.
                 dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
-                    [UIImage imageNamed:imageValue];
+                    // Try resolving as absolute path first, then as bundle resource
+                    UIImage *image = nil;
+                    if ([[NSFileManager defaultManager] fileExistsAtPath:path]) {
+                        image = [UIImage imageWithContentsOfFile:path];
+                    } else {
+                        NSString *bundlePath = [[NSBundle mainBundle] pathForResource:path ofType:nil];
+                        if (bundlePath) {
+                            image = [UIImage imageWithContentsOfFile:bundlePath];
+                        }
+                    }
+                    (void)image; // Preload into memory; assignment suppresses unused-variable warning
                 });
             }
         }
-        
+
         // Recursively check subviews
         NSArray *subviews = [view valueForUndefinedKey:@"subviews"];
         if (subviews) {
@@ -537,20 +549,24 @@ const CGFloat kRowVisibleThrottleInterval = 0.032; // ~30fps
 {
     if (sharedHeightCache) {
         os_unfair_lock_lock(cacheLock);
-        // Invalidate template cache entry
+        // Invalidate template cache entry only if it exists
         NSNumber *templateKey = [self templateKeyForRow:row];
-        [sharedTemplateCache removeObjectForKey:templateKey];
-        templateCacheEntryCount--;
-        templateCacheTotalCost -= sizeof(CGFloat);
-        
+        if ([sharedTemplateCache objectForKey:templateKey] != nil) {
+            [sharedTemplateCache removeObjectForKey:templateKey];
+            templateCacheEntryCount--;
+            templateCacheTotalCost -= sizeof(CGFloat);
+        }
+
         // Also invalidate all indexPath entries for this row
         for (NSIndexPath *path in [tableview indexPathsForVisibleRows]) {
             TiUITableViewRowProxy *rowProxy = [self rowForIndexPath:path];
             if (rowProxy == row) {
                 NSNumber *key = [self cacheKeyForIndexPath:path];
-                [sharedHeightCache removeObjectForKey:key];
-                heightCacheEntryCount--;
-                heightCacheTotalCost -= sizeof(CGFloat);
+                if ([sharedHeightCache objectForKey:key] != nil) {
+                    [sharedHeightCache removeObjectForKey:key];
+                    heightCacheEntryCount--;
+                    heightCacheTotalCost -= sizeof(CGFloat);
+                }
             }
         }
         os_unfair_lock_unlock(cacheLock);
