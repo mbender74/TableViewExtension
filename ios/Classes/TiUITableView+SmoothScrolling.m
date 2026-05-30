@@ -84,7 +84,7 @@ static NSInteger fpsSampleIndex = 0;
 
 // ProMotion detection and adaptive timing
 BOOL gPromotionEnabled = NO;
-CGFloat gThrottleInterval = 0.032;  // default: 30fps (60Hz displays)
+CGFloat gThrottleInterval = 1.0 / 30.0;  // default: 30fps (60Hz displays)
 
 // Detect ProMotion capability using CADisplayLink
 static void TVEInitProMotionDetection(void)
@@ -93,14 +93,14 @@ static void TVEInitProMotionDetection(void)
     // duration is in seconds per frame; 1/120 = 0.00833 for 120Hz
     if (link.duration <= 0.01) {
         gPromotionEnabled = YES;
-        gThrottleInterval = 0.016;  // ~60fps for 120Hz displays
+        gThrottleInterval = 1.0 / 60.0;  // 60fps for 120Hz displays
         gFPSSampleWindow  = kFPSSampleWindow120Hz;
-        NSLog(@"[TableViewExtension/Smooth] ProMotion detected (120Hz) — adaptive throttle: %.0ffps", 1.0 / gThrottleInterval);
+        NSLog(@"[TableViewExtension/Smooth] ProMotion detected (120Hz) — adaptive throttle: 60fps");
     } else {
         gPromotionEnabled = NO;
-        gThrottleInterval = 0.032;  // ~30fps for 60Hz displays
+        gThrottleInterval = 1.0 / 30.0;  // 30fps for 60Hz displays
         gFPSSampleWindow  = kFPSSampleWindow60Hz;
-        NSLog(@"[TableViewExtension/Smooth] Standard display (60Hz) — throttle: %.0ffps", 1.0 / gThrottleInterval);
+        NSLog(@"[TableViewExtension/Smooth] Standard display (60Hz) — throttle: 30fps");
     }
     [link invalidate];
 }
