@@ -352,24 +352,11 @@ typedef struct {
     }
 
 
-    //  if (![self isSearchStarted]) {
-
-      //  dispatch_async(dispatch_get_main_queue(), ^{
-
-          [UIView performWithoutAnimation:^{
-              CGPoint contentOffet = self->tableview.contentOffset;
-             // NSLog(@"row.preoffset  %f\n",contentOffet.y);
-
-              CGFloat preoffset = contentOffet.y;
-              CGFloat afteroffset = 0;
-              afteroffset = preoffset + cellheight;//
-              contentOffet.y = afteroffset;
-           //   [tableview beginUpdates];
-              [self->tableview setContentOffset:contentOffet];
-              [self->tableview insertRowsAtIndexPaths:[NSArray arrayWithObject:path] withRowAnimation:UITableViewRowAnimationNone];
-           //   [tableview endUpdates];
-
-          }];
+    [UIView performWithoutAnimation:^{
+        CGFloat currentOffset = self->tableview.contentOffset.y;
+        [self->tableview insertRowsAtIndexPaths:[NSArray arrayWithObject:path] withRowAnimation:UITableViewRowAnimationNone];
+        [self->tableview setContentOffset:CGPointMake(0, currentOffset + cellheight)];
+    }];
 //                  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.001 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
 //                       [(TiUITableViewProxy *)[self proxy] replaceValue:NUMBOOL(NO) forKey:@"isLoading" notification:NO];
 //                  });
