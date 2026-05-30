@@ -113,10 +113,11 @@ USE_VIEW_FOR_CONTENT_HEIGHT
     return nil;
 }
 
-//-(void)appendRowBeforeRow:(id)newRow
-//{
-//    [(TiUITableView *)[self view] appendRowBefore:newRow];
-//}
+- (void)appendRowBeforeRow:(id)newRow
+{
+    ENSURE_UI_THREAD(appendRowBeforeRow, newRow);
+    [(TiUITableView *)[self view] appendRowBeforeRow:newRow];
+}
 
 
 @end

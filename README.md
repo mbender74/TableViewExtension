@@ -917,6 +917,10 @@ win.open();
 - 🔧 **Removed dead fixed-height code** from `cachedHeightForRow:indexPath:` (already handled upstream)
 - 🔧 **Removed `UICollectionView+autoSnapping.swift`** — no longer needed
 - 🔧 **Fixed `paginEnabled` → `pagingEnabled`** — property name jetzt korrekt (vorher fehlte ein 'g')
+- 🔧 **Fixed `snappingEnabled`** — `scrollViewWillEndDragging`-Delegate war auskommentiert, Snapping funktioniert jetzt
+- 🔧 **Fixed `pagingEnabled`** — Custom-Paging-Logik entfernt, native UIKit-Paging übernimmt (vorher Konflikt → Springen zurück)
+
+### v2.2.0
 
 ### v2.2.0
 - Added row visibility tracking
