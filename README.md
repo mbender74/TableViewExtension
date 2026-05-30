@@ -24,6 +24,11 @@ A Titanium iOS module that extends `Ti.UI.TableView` with advanced scrolling opt
 - **Cell Reuse Statistics** – Track cell creation vs reuse rates
 - **Cache Invalidation on Reuse** – Stale cached heights are cleared when cells are recycled
 
+### ProMotion 120Hz Support (v2.4.0+)
+- **Adaptive Throttle** – Automatically detects ProMotion displays and increases event throttle from 30fps to 60fps
+- **Frame-aligned Animations** – Animation durations aligned to 60/120Hz frame boundaries
+- **Dynamic FPS Tracking** – Sample window adapts to display refresh rate for accurate FPS reporting
+
 ### Opaque Row Rendering (v2.3.0+)
 - **Selection-Aware Opacity** – `opaqueRow` makes subviews opaque for best scroll performance, but temporarily goes transparent during touch so `backgroundSelectedColor` / `backgroundFocusedColor` is visible
 - **Preserves Custom Colors** – When a row has no explicit `backgroundColor`, subviews keep their own `backgroundColor` (no forced color override)
@@ -39,18 +44,18 @@ cd ios
 ti build -p ios --build-only
 ```
 
-2. Copy the generated ZIP from `ios/dist/de.marcbender.tableviewextension-iphone-2.3.1.zip` into your app's root folder.
+2. Copy the generated ZIP from `ios/dist/de.marcbender.tableviewextension-iphone-2.4.0.zip` into your app's root folder.
 
 3. Add the module to your `tiapp.xml`:
 ```xml
 <modules>
-  <module version="2.3.1">de.marcbender.tableviewextension</module>
+  <module version="2.4.0">de.marcbender.tableviewextension</module>
 </modules>
 ```
 
 ### ProMotion 120Hz Support (Optional)
 
-Um die ProMotion-Optimierung für 120Hz-Displays (iPhone 13 Pro+, iPhone 17+, iPad Pro) zu aktivieren, muss folgender Key in die `tiapp.xml` eingetragen werden:
+To enable ProMotion optimization for 120Hz displays (iPhone 13 Pro+, iPhone 17+, iPad Pro), add the following key to your `tiapp.xml`:
 
 ```xml
 <ti:app>
@@ -65,9 +70,9 @@ Um die ProMotion-Optimierung für 120Hz-Displays (iPhone 13 Pro+, iPhone 17+, iP
 </ti:app>
 ```
 
-**Ohne diesen Key** bleibt das Modul auf ~60fps (System-Standard). **Mit diesem Key** erkennt das Modul automatisch die Display-Refresh-Rate und passt Scroll-Throttling, FPS-Tracking und Event-Raten dynamisch an (bis zu 120fps).
+**Without this key**, the module runs at ~60fps (system default). **With this key**, the module automatically detects the display refresh rate and adapts scroll throttling, FPS tracking, and event rates dynamically (up to 120fps).
 
-> **Hinweis:** iPad Pro benötigt diesen Key nicht — ProMotion funktioniert dort automatisch. Nur iPhones benötigen `CADisableMinimumFrameDurationOnPhone`.
+> **Note:** iPad Pro does not require this key — ProMotion works automatically there. Only iPhones need `CADisableMinimumFrameDurationOnPhone`.
 
 ### Global Installation
 
@@ -671,7 +676,7 @@ scrollView.setContentInsets(
 
 #### `opaque` *(v2.3.0+)*
 
-Die `opaque` Eigenschaft für `Ti.UI.View` ist in v2.3.0 entfernt worden. Verwende stattdessen `opaqueRow` auf `Ti.UI.TableViewRow` für optimiertes Rendering.
+The `opaque` property for `Ti.UI.View` was removed in v2.3.0. Use `opaqueRow` on `Ti.UI.TableViewRow` instead for optimized rendering.
 
 ## Performance Tuning Guide
 
@@ -919,11 +924,18 @@ win.open();
 
 ## Changelog
 
-### v2.3.1 (Current) — Bugfixes & appendRowBeforeRow
-- 🔧 **Fixed `appendRowBeforeRow`** — Proxy-Methode aktiviert, `insertRow:before:` implementiert, Scroll-Offset-Anpassung verbessert
-- 🔧 **Fixed `snappingEnabled`** — `scrollViewWillEndDragging`-Delegate war auskommentiert
-- 🔧 **Fixed `pagingEnabled`** — Custom-Paging-Logik entfernt, native UIKit-Paging übernimmt
-- 🔧 **Fixed `paginEnabled` → `pagingEnabled`** — property name jetzt korrekt
+### v2.4.0 (Current) — ProMotion 120Hz Support
+- ✨ **ProMotion auto-detection** — Automatically detects 120Hz displays via CADisplayLink
+- ✨ **Adaptive throttle** — Event throttle increases from 30fps to 60fps on ProMotion devices
+- ✨ **Frame-aligned animations** — Animation durations (167ms, 200ms) aligned to 60/120Hz frame boundaries
+- ✨ **Dynamic FPS tracking** — Sample window adapts to display refresh rate (60 or 120 samples)
+- 🔧 **Velocity tracking** — Adjusted interval for ProMotion (every 6 frames instead of 3)
+
+### v2.3.1 — Bugfixes & appendRowBeforeRow
+- 🔧 **Fixed `appendRowBeforeRow`** — Proxy method enabled, `insertRow:before:` implemented, scroll offset adjustment improved
+- 🔧 **Fixed `snappingEnabled`** — `scrollViewWillEndDragging` delegate was commented out
+- 🔧 **Fixed `pagingEnabled`** — Custom paging logic removed, native UIKit paging takes over
+- 🔧 **Fixed `paginEnabled` → `pagingEnabled`** — Property name now correct
 
 ### v2.3.0
 - ✨ **`smoothScrolling` convenience property** — enables all performance optimizations at once
@@ -941,11 +953,9 @@ win.open();
 - 🔧 **Cache teardown on module unload / memory warning** — frees `sharedHeightCache`, `sharedTemplateCache`, `cacheLock`, and preload queue
 - 🔧 **Removed dead fixed-height code** from `cachedHeightForRow:indexPath:` (already handled upstream)
 - 🔧 **Removed `UICollectionView+autoSnapping.swift`** — no longer needed
-- 🔧 **Fixed `paginEnabled` → `pagingEnabled`** — property name jetzt korrekt (vorher fehlte ein 'g')
-- 🔧 **Fixed `snappingEnabled`** — `scrollViewWillEndDragging`-Delegate war auskommentiert, Snapping funktioniert jetzt
-- 🔧 **Fixed `pagingEnabled`** — Custom-Paging-Logik entfernt, native UIKit-Paging übernimmt (vorher Konflikt → Springen zurück)
-
-### v2.2.0
+- 🔧 **Fixed `paginEnabled` → `pagingEnabled`** — Property name now correct (was missing a 'g')
+- 🔧 **Fixed `snappingEnabled`** — `scrollViewWillEndDragging` delegate was commented out, snapping now works
+- 🔧 **Fixed `pagingEnabled`** — Custom paging logic removed, native UIKit paging takes over (previous conflict caused jumping back)
 
 ### v2.2.0
 - Added row visibility tracking
