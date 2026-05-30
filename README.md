@@ -6,7 +6,7 @@ A Titanium iOS module that extends `Ti.UI.TableView` with advanced scrolling opt
 
 ### Core Features
 - **Row Visibility Tracking** – Monitor which table rows enter/leave the viewport
-- **Auto-Snapping Scroll** – Snap scrolling to row boundaries for a carousel-like experience
+- **Auto-Snapping Scroll** – Snap scrolling to row boundaries for a carousel-like experience; scrolling always stops at the top of a fully visible row
 - **Dynamic Content Insets** – Programmatically adjust table insets with animation support
 - **Row Prepend** – Insert rows at the top with automatic scroll offset adjustment
 - **Pan Gesture Events** – Custom pan gesture recognition on table views
@@ -870,7 +870,7 @@ win.open();
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `snappingEnabled` | Boolean | Enable/disable auto-snapping behavior |
+| `snappingEnabled` | Boolean | Snap scrolling to row boundaries for a carousel-like experience; scrolling always stops at the top of a fully visible row |
 | `isLoading` | Boolean | Flag to prevent operations during async loading |
 | `scrollSlow` | Boolean | Enable slower deceleration rate for smoother scrolling |
 | `enableBounce` | Boolean | Enable/disable bounce effect |
