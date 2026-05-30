@@ -39,12 +39,12 @@ cd ios
 ti build -p ios --build-only
 ```
 
-2. Copy the generated ZIP from `ios/dist/de.marcbender.tableviewextension-iphone-2.3.0.zip` into your app's root folder.
+2. Copy the generated ZIP from `ios/dist/de.marcbender.tableviewextension-iphone-2.3.1.zip` into your app's root folder.
 
 3. Add the module to your `tiapp.xml` — nothing else needed, just this:
 ```xml
 <modules>
-  <module version="2.3.0">de.marcbender.tableviewextension</module>
+  <module version="2.3.1">de.marcbender.tableviewextension</module>
 </modules>
 ```
 
@@ -900,7 +900,13 @@ win.open();
 
 ## Changelog
 
-### v2.3.0 (Current) — Smooth Scrolling & Opaque Row Rendering
+### v2.3.1 (Current) — Bugfixes & appendRowBeforeRow
+- 🔧 **Fixed `appendRowBeforeRow`** — Proxy-Methode aktiviert, `insertRow:before:` implementiert, Scroll-Offset-Anpassung verbessert
+- 🔧 **Fixed `snappingEnabled`** — `scrollViewWillEndDragging`-Delegate war auskommentiert
+- 🔧 **Fixed `pagingEnabled`** — Custom-Paging-Logik entfernt, native UIKit-Paging übernimmt
+- 🔧 **Fixed `paginEnabled` → `pagingEnabled`** — property name jetzt korrekt
+
+### v2.3.0
 - ✨ **`smoothScrolling` convenience property** — enables all performance optimizations at once
 - ✨ **Selection-Aware `opaqueRow`** — `backgroundSelectedColor` / `backgroundFocusedColor` remain visible during touch while keeping rows fully opaque for scrolling
 - ✨ **`opaqueRow` without explicit `backgroundColor`** — subviews retain their own colors; no arbitrary color override
