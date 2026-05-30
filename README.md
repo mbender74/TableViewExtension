@@ -41,12 +41,33 @@ ti build -p ios --build-only
 
 2. Copy the generated ZIP from `ios/dist/de.marcbender.tableviewextension-iphone-2.3.1.zip` into your app's root folder.
 
-3. Add the module to your `tiapp.xml` — nothing else needed, just this:
+3. Add the module to your `tiapp.xml`:
 ```xml
 <modules>
   <module version="2.3.1">de.marcbender.tableviewextension</module>
 </modules>
 ```
+
+### ProMotion 120Hz Support (Optional)
+
+Um die ProMotion-Optimierung für 120Hz-Displays (iPhone 13 Pro+, iPhone 17+, iPad Pro) zu aktivieren, muss folgender Key in die `tiapp.xml` eingetragen werden:
+
+```xml
+<ti:app>
+    <ios>
+        <plist>
+            <dict>
+                <key>CADisableMinimumFrameDurationOnPhone</key>
+                <true/>
+            </dict>
+        </plist>
+    </ios>
+</ti:app>
+```
+
+**Ohne diesen Key** bleibt das Modul auf ~60fps (System-Standard). **Mit diesem Key** erkennt das Modul automatisch die Display-Refresh-Rate und passt Scroll-Throttling, FPS-Tracking und Event-Raten dynamisch an (bis zu 120fps).
+
+> **Hinweis:** iPad Pro benötigt diesen Key nicht — ProMotion funktioniert dort automatisch. Nur iPhones benötigen `CADisableMinimumFrameDurationOnPhone`.
 
 ### Global Installation
 

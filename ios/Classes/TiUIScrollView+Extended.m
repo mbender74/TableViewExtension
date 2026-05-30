@@ -17,7 +17,7 @@
 
 // Configurable constants
 static const CGFloat kDefaultSafeAreaOffset = 34;  // Default safe area offset (iOS tab bar)
-static const CGFloat kDefaultAnimationDuration = 211; // ms
+static const CGFloat kDefaultAnimationDuration = 200; // ms — frame-aligned: 15 frames @ 120Hz, 12 frames @ 60Hz
 
 UIEdgeInsets scrollViewContentInsets;
 

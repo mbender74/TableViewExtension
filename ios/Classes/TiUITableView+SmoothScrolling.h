@@ -16,6 +16,10 @@ extern CFAbsoluteTime lastRowVisibleTime;
 extern CFAbsoluteTime lastRowNotVisibleTime;
 extern const CGFloat kRowVisibleThrottleInterval;
 
+// ProMotion support (shared across files)
+extern BOOL gPromotionEnabled;
+extern CGFloat gThrottleInterval;  // adaptive: 0.016s (120Hz) or 0.032s (60Hz)
+
 @interface TiUITableView (SmoothScrolling)
 
 #pragma mark - Height Caching

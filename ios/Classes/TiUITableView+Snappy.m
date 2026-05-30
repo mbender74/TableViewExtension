@@ -39,7 +39,7 @@
 static const CGFloat kRoundingHeight = 160;           // Snapping tolerance in points
 static const CGFloat kDecelerationRateSlow = 0.9975;
 static const CGFloat kDecelerationRateFast = 0.9980;
-static const CGFloat kDefaultAnimationDuration = 180; // ms
+static const CGFloat kDefaultAnimationDuration = 167; // ms — frame-aligned: 12 frames @ 120Hz, 10 frames @ 60Hz
 
 #define RECOGNIZE_SIMULTANEOUSLY_PAN    (1 << 15)
 UIEdgeInsets tableContentInsets;
@@ -703,9 +703,9 @@ typedef struct {
         }
     }
     
-    // Fire rowvisible event with throttling (~30fps to prevent jank)
+    // Fire rowvisible event with adaptive throttling (60fps on ProMotion, 30fps on standard)
     CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
-    if (now - lastRowVisibleTime >= kRowVisibleThrottleInterval) {
+    if (now - lastRowVisibleTime >= gThrottleInterval) {
         lastRowVisibleTime = now;
         
         if ([[self proxy] _hasListeners:@"rowvisible"]) {
@@ -787,9 +787,9 @@ typedef struct {
 - (void)tableView:(UITableView *)thisTableView didEndDisplayingCell:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath
 {
     if ([[self proxy] _hasListeners:@"rownotvisible"]) {
-        // Throttle rownotvisible events with separate timer
+        // Throttle rownotvisible events with adaptive timer (60fps on ProMotion, 30fps on standard)
         CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
-        if (now - lastRowNotVisibleTime >= kRowVisibleThrottleInterval) {
+        if (now - lastRowNotVisibleTime >= gThrottleInterval) {
             lastRowNotVisibleTime = now;
             
             NSIndexPath *index = indexPath;

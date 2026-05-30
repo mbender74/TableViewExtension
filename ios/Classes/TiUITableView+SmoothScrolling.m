@@ -74,9 +74,36 @@ CGFloat fps = 60;
 static const NSInteger kLogInterval = 60; // Log FPS every 60 frames instead of 30
 
 // FPS smoothing - rolling average over last N frames
-static const NSInteger kFPSSampleWindow = 60;
-static CFAbsoluteTime frameTimestamps[60];
+// ProMotion: dynamically sized based on detected refresh rate
+static const NSInteger kFPSSampleWindow60Hz   = 60;   // 1s at 60Hz
+static const NSInteger kFPSSampleWindow120Hz  = 120;  // 1s at 120Hz
+static const NSInteger kFPSSampleWindowMax    = 120;  // max buffer size
+static NSInteger gFPSSampleWindow = kFPSSampleWindow60Hz;
+static CFAbsoluteTime frameTimestamps[kFPSSampleWindowMax];
 static NSInteger fpsSampleIndex = 0;
+
+// ProMotion detection and adaptive timing
+BOOL gPromotionEnabled = NO;
+CGFloat gThrottleInterval = 0.032;  // default: 30fps (60Hz displays)
+
+// Detect ProMotion capability using CADisplayLink
+static void TVEInitProMotionDetection(void)
+{
+    CADisplayLink *link = [CADisplayLink displayLinkWithTarget:NSProcessInfo.processInfo selector:@selector(start)];
+    // duration is in seconds per frame; 1/120 = 0.00833 for 120Hz
+    if (link.duration <= 0.01) {
+        gPromotionEnabled = YES;
+        gThrottleInterval = 0.016;  // ~60fps for 120Hz displays
+        gFPSSampleWindow  = kFPSSampleWindow120Hz;
+        NSLog(@"[TableViewExtension/Smooth] ProMotion detected (120Hz) — adaptive throttle: %.0ffps", 1.0 / gThrottleInterval);
+    } else {
+        gPromotionEnabled = NO;
+        gThrottleInterval = 0.032;  // ~30fps for 60Hz displays
+        gFPSSampleWindow  = kFPSSampleWindow60Hz;
+        NSLog(@"[TableViewExtension/Smooth] Standard display (60Hz) — throttle: %.0ffps", 1.0 / gThrottleInterval);
+    }
+    [link invalidate];
+}
 
 // Preload queue configuration - adaptive based on scroll speed (thread-safe with dispatch_once)
 static dispatch_once_t preloadQueueOnce;
@@ -97,7 +124,7 @@ static os_unfair_lock_t cacheLock = nil;
 // Scroll event throttling - centralized (used by Snappy too)
 CFAbsoluteTime lastRowVisibleTime = 0;
 CFAbsoluteTime lastRowNotVisibleTime = 0;
-const CGFloat kRowVisibleThrottleInterval = 0.032; // ~30fps
+const CGFloat kRowVisibleThrottleInterval = 0.032; // ~30fps (use gThrottleInterval dynamically)
 
 @implementation TiUITableView (SmoothScrolling)
 
@@ -105,6 +132,12 @@ const CGFloat kRowVisibleThrottleInterval = 0.032; // ~30fps
 
 - (void)enableHeightCaching
 {
+    // Initialize ProMotion detection on first use (thread-safe: only runs once)
+    static dispatch_once_t promotionOnce;
+    dispatch_once(&promotionOnce, ^{
+        TVEInitProMotionDetection();
+    });
+    
     if (sharedHeightCache == nil) {
         // Get device memory for dynamic limits
         uint64_t totalMemory = [[NSProcessInfo processInfo] physicalMemory];
@@ -590,6 +623,9 @@ void TVECleanupCaches(void)
     CGFloat reuseRate = totalCells > 0 ? (CGFloat)cellReuseCount / totalCells * 100.0 : 0;
     
     NSLog(@"[TableViewExtension/Smooth] === Performance Report ===");
+    NSLog(@"[TableViewExtension/Smooth] Display: %@ (throttle: %.0ffps)",
+         gPromotionEnabled ? @"ProMotion 120Hz" : @"Standard 60Hz",
+         1.0 / gThrottleInterval);
     NSLog(@"[TableViewExtension/Smooth] Scroll FPS: %.1f (frames: %ld)", fps, (long)frameCount);
     NSLog(@"[TableViewExtension/Smooth] Cache Hit Rate: %.1f%% (%ld/%ld, %ld template)", 
          hitRate, (long)cacheHitCount, (long)totalRequests, (long)templateHitCount);
@@ -689,28 +725,30 @@ void TVECleanupCaches(void)
     
     // --- FPS tracking: MUST run on EVERY frame, before throttling ---
     frameCount++;
-    frameTimestamps[fpsSampleIndex % kFPSSampleWindow] = currentTime;
+    frameTimestamps[fpsSampleIndex % gFPSSampleWindow] = currentTime;
     fpsSampleIndex++;
     
     // Calculate smoothed FPS from rolling window
-    if (fpsSampleIndex >= kFPSSampleWindow) {
-        CFAbsoluteTime oldestTime = frameTimestamps[(fpsSampleIndex - kFPSSampleWindow) % kFPSSampleWindow];
-        CFAbsoluteTime newestTime = frameTimestamps[(fpsSampleIndex - 1) % kFPSSampleWindow];
+    if (fpsSampleIndex >= gFPSSampleWindow) {
+        CFAbsoluteTime oldestTime = frameTimestamps[(fpsSampleIndex - gFPSSampleWindow) % gFPSSampleWindow];
+        CFAbsoluteTime newestTime = frameTimestamps[(fpsSampleIndex - 1) % gFPSSampleWindow];
         CGFloat totalTime = (newestTime - oldestTime) * 1000.0;
         if (totalTime > 1.0) {
-            fps = (CGFloat)(kFPSSampleWindow - 1) / (totalTime / 1000.0);
+            fps = (CGFloat)(gFPSSampleWindow - 1) / (totalTime / 1000.0);
         }
     }
     
-    // Throttle scroll processing to ~30fps to reduce main thread load
+    // Throttle scroll processing — adaptive: 60fps on ProMotion, 30fps on standard
     static CFAbsoluteTime lastScrollProcessTime = 0;
-    if (currentTime - lastScrollProcessTime < 0.032) {
+    if (currentTime - lastScrollProcessTime < gThrottleInterval) {
         return; // Skip this frame
     }
     lastScrollProcessTime = currentTime;
     
-    // Adaptive preload: adjust based on scroll velocity (throttled to every 3rd frame)
-    if (frameCount % 3 == 0) {
+    // Adaptive preload: adjust based on scroll velocity
+    // ProMotion: every 6 frames (~32ms), Standard: every 3 frames (~50ms)
+    NSInteger velocityCheckInterval = gPromotionEnabled ? 6 : 3;
+    if (frameCount % velocityCheckInterval == 0) {
         UIPanGestureRecognizer *pan = scrollView.panGestureRecognizer;
         CGPoint velocity = [pan velocityInView:scrollView.superview];
         lastScrollVelocity = velocity.y;
