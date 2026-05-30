@@ -687,14 +687,27 @@ void TVECleanupCaches(void)
     
     CFAbsoluteTime currentTime = CFAbsoluteTimeGetCurrent();
     
+    // --- FPS tracking: MUST run on EVERY frame, before throttling ---
+    frameCount++;
+    frameTimestamps[fpsSampleIndex % kFPSSampleWindow] = currentTime;
+    fpsSampleIndex++;
+    
+    // Calculate smoothed FPS from rolling window
+    if (fpsSampleIndex >= kFPSSampleWindow) {
+        CFAbsoluteTime oldestTime = frameTimestamps[(fpsSampleIndex - kFPSSampleWindow) % kFPSSampleWindow];
+        CFAbsoluteTime newestTime = frameTimestamps[(fpsSampleIndex - 1) % kFPSSampleWindow];
+        CGFloat totalTime = (newestTime - oldestTime) * 1000.0;
+        if (totalTime > 1.0) {
+            fps = (CGFloat)(kFPSSampleWindow - 1) / (totalTime / 1000.0);
+        }
+    }
+    
     // Throttle scroll processing to ~30fps to reduce main thread load
     static CFAbsoluteTime lastScrollProcessTime = 0;
     if (currentTime - lastScrollProcessTime < 0.032) {
         return; // Skip this frame
     }
     lastScrollProcessTime = currentTime;
-    
-    frameCount++;
     
     // Adaptive preload: adjust based on scroll velocity (throttled to every 3rd frame)
     if (frameCount % 3 == 0) {
@@ -714,20 +727,6 @@ void TVECleanupCaches(void)
         } else {
             gPreloadAheadRows = 5;
             gPreloadBehindRows = 3;
-        }
-    }
-    
-    // Store frame timestamp for rolling FPS calculation
-    frameTimestamps[fpsSampleIndex % kFPSSampleWindow] = currentTime;
-    fpsSampleIndex++;
-    
-    // Calculate smoothed FPS from rolling window with better guards
-    if (fpsSampleIndex >= kFPSSampleWindow) {
-        CFAbsoluteTime oldestTime = frameTimestamps[(fpsSampleIndex - kFPSSampleWindow) % kFPSSampleWindow];
-        CFAbsoluteTime newestTime = frameTimestamps[(fpsSampleIndex - 1) % kFPSSampleWindow];
-        CGFloat totalTime = (newestTime - oldestTime) * 1000.0;
-        if (totalTime > 1.0) { // Guard: must be at least 1ms to avoid division issues
-            fps = (CGFloat)(kFPSSampleWindow - 1) / (totalTime / 1000.0);
         }
     }
     
