@@ -859,16 +859,6 @@ typedef struct {
             [self autoSnappping:velocity withTargetOffset:targetContentOffset];
         }
     }
-
-    if ([self tableView].pagingEnabled) {
-        UITableView *tv = (UITableView *)scrollView;
-        NSIndexPath *indexPathOfVisibleRow = [tv indexPathForRowAtPoint:*targetContentOffset];
-        if (indexPathOfVisibleRow) {
-            CGRect rectForVisibleRow = [tv rectForRowAtIndexPath:indexPathOfVisibleRow];
-            // Snap to the bottom of the row so the full row is visible
-            targetContentOffset->y = rectForVisibleRow.origin.y + rectForVisibleRow.size.height - tv.bounds.size.height + tv.contentInset.top;
-        }
-    }
 }
 
 
