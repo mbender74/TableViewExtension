@@ -852,7 +852,7 @@ win.open();
 | `enableBounce` | Boolean | Enable/disable bounce effect |
 | `alwaysBounceVertical` | Boolean | Always show vertical bounce |
 | `directionalLockEnabled` | Boolean | Lock scrolling to one direction |
-| `paginEnabled` | Boolean | Enable paging behavior |
+| `pagingEnabled` | Boolean | Enable paging behavior |
 | `smoothScrolling` | Boolean | Enable all performance optimizations (v2.3.0+) |
 | `enableHeightCaching` | Boolean | Enable intelligent height caching (v2.3.0+) |
 | `estimatedRowHeight` | Number | Estimated height for lazy layout (v2.3.0+) |
@@ -916,6 +916,7 @@ win.open();
 - 🔧 **Cache teardown on module unload / memory warning** — frees `sharedHeightCache`, `sharedTemplateCache`, `cacheLock`, and preload queue
 - 🔧 **Removed dead fixed-height code** from `cachedHeightForRow:indexPath:` (already handled upstream)
 - 🔧 **Removed `UICollectionView+autoSnapping.swift`** — no longer needed
+- 🔧 **Fixed `paginEnabled` → `pagingEnabled`** — property name jetzt korrekt (vorher fehlte ein 'g')
 
 ### v2.2.0
 - Added row visibility tracking

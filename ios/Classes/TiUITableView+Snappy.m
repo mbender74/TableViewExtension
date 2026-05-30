@@ -135,7 +135,7 @@ typedef struct {
     tableview.delaysContentTouches = ![TiUtils boolValue:value];
 
 }
-- (void)setPaginEnabled_:(id)value
+- (void)setPagingEnabled_:(id)value
 {
     tableview.pagingEnabled = [TiUtils boolValue:value];
 }
@@ -848,54 +848,25 @@ typedef struct {
 //}
 
 
-//
-//- (void)scrollViewWillEndDragging:(UIScrollView *)scrollView withVelocity:(CGPoint)velocity targetContentOffset:(inout CGPoint *)targetContentOffset
-//{
-//
-////    NSLog(@"[ERROR] scrollViewWillEndDragging Module: %f",targetContentOffset->y);
-//
-//
-//
-//
-//    if ([TiUtils boolValue:[self.proxy valueForUndefinedKey:@"snappingEnabled"] def:NO]){
-//        if (![TiUtils boolValue:[self.proxy valueForUndefinedKey:@"isLoading"] def:NO]){
-//
-//            [self autoSnappping:velocity withTargetOffset:targetContentOffset];
-//        }
-//    }
-//
-//    if ([self tableView].pagingEnabled){
-//        UITableView *tv = (UITableView*)scrollView;
-//        NSIndexPath *indexPathOfTopRowAfterScrolling = [tv indexPathForRowAtPoint:*targetContentOffset];
-//        CGRect rectForTopRowAfterScrolling = [tv rectForRowAtIndexPath: indexPathOfTopRowAfterScrolling];
-//        targetContentOffset->y = rectForTopRowAfterScrolling.origin.y;
-//    }
-//
-//    if ([[self proxy] _hasListeners:@"scrolled"]) {
-//        NSString *direction = nil;
-//
-//        if (velocity.y > 0) {
-//          direction = @"up";
-//        }
-//
-//        if (velocity.y < 0) {
-//          direction = @"down";
-//        }
-//
-//        NSMutableDictionary *event = [NSMutableDictionary dictionaryWithDictionary:@{
-//            @"contentOffset" : NUMFLOAT(scrollView.contentOffset.y),
-//            @"contentHeight" : NUMFLOAT(scrollView.contentSize.height),
-//            @"targetContentOffset" : NUMFLOAT(targetContentOffset->y),
-//          @"velocity" : NUMFLOAT(velocity.y)
-//        }];
-//        if (direction != nil) {
-//          [event setValue:direction forKey:@"direction"];
-//        }
-//
-//        [[self proxy] fireEvent:@"scrolled" withObject:event];
-//        RELEASE_TO_NIL(direction);
-//  }
-//}
+- (void)scrollViewWillEndDragging:(UIScrollView *)scrollView withVelocity:(CGPoint)velocity targetContentOffset:(inout CGPoint *)targetContentOffset
+{
+    if ([self.nextResponder respondsToSelector:@selector(scrollViewWillEndDragging:withVelocity:targetContentOffset:)]) {
+        [(id)self.nextResponder scrollViewWillEndDragging:scrollView withVelocity:velocity targetContentOffset:targetContentOffset];
+    }
+
+    if ([TiUtils boolValue:[self.proxy valueForUndefinedKey:@"snappingEnabled"] def:NO]) {
+        if (![TiUtils boolValue:[self.proxy valueForUndefinedKey:@"isLoading"] def:NO]) {
+            [self autoSnappping:velocity withTargetOffset:targetContentOffset];
+        }
+    }
+
+    if ([self tableView].pagingEnabled) {
+        UITableView *tv = (UITableView *)scrollView;
+        NSIndexPath *indexPathOfTopRowAfterScrolling = [tv indexPathForRowAtPoint:*targetContentOffset];
+        CGRect rectForTopRowAfterScrolling = [tv rectForRowAtIndexPath:indexPathOfTopRowAfterScrolling];
+        targetContentOffset->y = rectForTopRowAfterScrolling.origin.y;
+    }
+}
 
 
 @end
