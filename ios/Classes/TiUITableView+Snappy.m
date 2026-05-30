@@ -862,9 +862,12 @@ typedef struct {
 
     if ([self tableView].pagingEnabled) {
         UITableView *tv = (UITableView *)scrollView;
-        NSIndexPath *indexPathOfTopRowAfterScrolling = [tv indexPathForRowAtPoint:*targetContentOffset];
-        CGRect rectForTopRowAfterScrolling = [tv rectForRowAtIndexPath:indexPathOfTopRowAfterScrolling];
-        targetContentOffset->y = rectForTopRowAfterScrolling.origin.y;
+        NSIndexPath *indexPathOfVisibleRow = [tv indexPathForRowAtPoint:*targetContentOffset];
+        if (indexPathOfVisibleRow) {
+            CGRect rectForVisibleRow = [tv rectForRowAtIndexPath:indexPathOfVisibleRow];
+            // Snap to the bottom of the row so the full row is visible
+            targetContentOffset->y = rectForVisibleRow.origin.y + rectForVisibleRow.size.height - tv.bounds.size.height + tv.contentInset.top;
+        }
     }
 }
 
