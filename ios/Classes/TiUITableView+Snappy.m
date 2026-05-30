@@ -357,6 +357,15 @@ typedef struct {
         [self->tableview insertRowsAtIndexPaths:[NSArray arrayWithObject:path] withRowAnimation:UITableViewRowAnimationNone];
         [self->tableview setContentOffset:CGPointMake(0, currentOffset + cellheight)];
     }];
+    // Alte Variante:
+    // [UIView performWithoutAnimation:^{
+    //     CGPoint contentOffet = self->tableview.contentOffset;
+    //     CGFloat preoffset = contentOffet.y;
+    //     CGFloat afteroffset = preoffset + cellheight;
+    //     contentOffet.y = afteroffset;
+    //     [self->tableview setContentOffset:contentOffet];
+    //     [self->tableview insertRowsAtIndexPaths:[NSArray arrayWithObject:path] withRowAnimation:UITableViewRowAnimationNone];
+    // }];
 //                  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.001 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
 //                       [(TiUITableViewProxy *)[self proxy] replaceValue:NUMBOOL(NO) forKey:@"isLoading" notification:NO];
 //                  });
