@@ -263,7 +263,7 @@ const newRow = Ti.UI.createTableViewRow({
 tableView.appendRowBeforeRow(newRow);
 ```
 
-**Use Case:** Infinite scroll / loading older items above the current view.
+**Use Case:** Infinite scroll / loading older items above the current view — infinite lazy loading on top (like normal lazy loading on bottom).
 
 ```javascript
 tableView.addEventListener('scroll', function(e) {
