@@ -247,21 +247,17 @@ typedef struct {
 //
 //    NSLog(@"[ERROR] touchesMoved Module:");
 //
-//
-//   [super touchesMoved:touches withEvent:event];
-//}
-//
-//- (void)insertRow:(TiUITableViewRowProxy *)row before:(TiUITableViewRowProxy *)before
-//{
-//    [UIView performWithoutAnimation:^{
-//          row.table = self;
-//          row.section = before.section;
-//          NSMutableArray *rows = [row.section rows];
-//          [rows insertObject:row atIndex:row.row];
-//          [row.section rememberProxy:row];
-//          [row.section reorderRows];
-//    }];
-//}
+- (void)insertRow:(TiUITableViewRowProxy *)row before:(TiUITableViewRowProxy *)before
+{
+    [UIView performWithoutAnimation:^{
+        row.table = self;
+        row.section = before.section;
+        NSMutableArray *rows = [row.section rows];
+        [rows insertObject:row atIndex:row.row];
+        [row.section rememberProxy:row];
+        [row.section reorderRows];
+    }];
+}
 
 #pragma mark - Opaque Helpers
 
