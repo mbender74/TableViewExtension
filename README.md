@@ -710,8 +710,6 @@ This reduces main-thread overhead by ~50% while maintaining smooth scrolling.
 ## Complete Example
 
 ```javascript
-import tableviewextension from 'de.marcbender.tableviewextension';
-
 const win = Ti.UI.createWindow({
   title: 'TableViewExtension Demo'
 });
