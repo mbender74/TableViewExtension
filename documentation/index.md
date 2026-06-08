@@ -1,8 +1,30 @@
-# TableViewExtension Module v2.2.0
+# TableViewExtension Module v2.4.0
 
 ## Description
 
-TableViewExtension is a Titanium iOS module that extends the native `UITableView` component with advanced functionality including row visibility tracking, auto-snapping scroll behavior, dynamic content inset management, and enhanced gesture recognition.
+TableViewExtension is a Titanium iOS module that extends the native `UITableView` component with advanced functionality including:
+- **Row Visibility Tracking** – Monitor which table rows enter/leave the viewport
+- **Auto-Snapping Scroll** – Snap scrolling to row boundaries for a carousel-like experience; scrolling always stops at the top of a fully visible row
+- **Dynamic Content Insets** – Programmatically adjust table insets with animation support
+- **Row Prepend** – Insert rows at the top with automatic scroll offset adjustment
+- **Pan Gesture Events** – Custom pan gesture recognition on table views
+
+### Performance Optimizations (v2.3.0+)
+- **Intelligent Height Caching** – Template-based and indexPath-based caching with NSCache
+- **Adaptive Preload Queue** – Background height calculation with concurrent GCD queue
+- **Dynamic Cache Limits** – Adjusts based on device memory (3GB+ devices get more)
+- **Scroll Event Throttling** – 30fps throttling to prevent jank
+- **Image Preloading** – Thread-safe async image loading from nested view hierarchies
+- **Memory Warning Handling** – Automatic cache clearing on low memory, plus cache teardown on module shutdown
+- **Section Header/Footer Caching** – Estimated heights for better scrolling
+- **FPS Tracking** – Real-time scroll performance monitoring
+- **Cell Reuse Statistics** – Track cell creation vs reuse rates
+- **Cache Invalidation on Reuse** – Stale cached heights are cleared when cells are recycled
+
+### ProMotion 120Hz Support (v2.4.0+)
+- **Adaptive Throttle** – Automatically detects ProMotion displays and increases event throttle from 30fps to 60fps
+- **Frame-aligned Animations** – Animation durations aligned to 60/120Hz frame boundaries
+- **Dynamic FPS Tracking** – Sample window adapts to display refresh rate for accurate FPS reporting
 
 ## Accessing the TableViewExtension Module
 
@@ -51,6 +73,111 @@ Enables or disables user interaction on the table view.
 tableView.handleTouches = false; // Disable scrolling
 ```
 
+#### `snappingEnabled`
+
+Snap scrolling to row boundaries for a carousel-like experience; scrolling always stops at the top of a fully visible row.
+
+**Type:** `Boolean`
+
+**Example:**
+```javascript
+tableView.snappingEnabled = true;
+```
+
+#### `smoothScrolling` *(v2.3.0+)*
+
+Convenience property that enables all performance optimizations at once.
+
+**Type:** `Boolean`
+
+**Example:**
+```javascript
+tableView.smoothScrolling = true;
+// Enables: height caching, estimated heights (80pt), prefetching
+```
+
+#### `enableHeightCaching` *(v2.3.0+)*
+
+Enables intelligent row height caching with template-based optimization.
+
+**Type:** `Boolean`
+
+**Example:**
+```javascript
+tableView.enableHeightCaching = true;
+```
+
+#### `estimatedRowHeight` *(v2.3.0+)*
+
+Sets the estimated row height for lazy layout calculations.
+
+**Type:** `Number` (points)
+
+**Example:**
+```javascript
+tableView.estimatedRowHeight = 80; // Default recommended value
+```
+
+#### `prefetchEnabled` *(v2.3.0+)*
+
+Enables background preload queue for proactive height calculation.
+
+**Type:** `Boolean`
+
+**Example:**
+```javascript
+tableView.prefetchEnabled = true;
+```
+
+#### `imagePreloadEnabled` *(v2.3.0+)*
+
+Enables async image preloading from nested view hierarchies.
+
+**Type:** `Boolean`
+
+**Example:**
+```javascript
+tableView.imagePreloadEnabled = true;
+```
+
+#### `MemoryWarningHandling` *(v2.3.0+)*
+
+Enables automatic cache clearing on memory warnings.
+
+**Type:** `Boolean`
+
+**Example:**
+```javascript
+tableView.memoryWarningHandling = true;
+```
+
+#### `sectionHeaderFooterCaching` *(v2.3.0+)*
+
+Enables estimated heights for section headers and footers.
+
+**Type:** `Boolean`
+
+**Example:**
+```javascript
+tableView.sectionHeaderFooterCaching = true;
+// Default: header=44pt, footer=22pt
+```
+
+### ScrollView Properties
+
+#### `scrollToBottomNoAnim()`
+
+Scrolls to the bottom without animation.
+
+**Example:**
+```javascript
+scrollView.scrollToBottomNoAnim();
+```
+
+#### `setContentInsets(insets, options)`
+
+Sets content insets for scroll views (same signature as TableView).
+
 ### TableView Methods
 
 #### `setContentInsets(insets, options)`
@@ -92,7 +219,7 @@ tableView.appendRowBeforeRow(newRow);
 
 #### `rowvisible`
 
-Fired when a table row becomes visible.
+Fired when a table row becomes visible. Throttled to 30fps (60fps on ProMotion displays) to prevent jank.
 
 **Event Properties:**
 - `section` (Ti.UI.TableViewSection) – The section
@@ -111,7 +238,7 @@ tableView.addEventListener('rowvisible', function(e) {
 
 #### `rownotvisible`
 
-Fired when a table row scrolls out of view.
+Fired when a table row scrolls out of view. Throttled to 30fps (60fps on ProMotion displays).
 
 **Event Properties:**
 - `section` (Ti.UI.TableViewSection)
@@ -124,6 +251,40 @@ Fired when a table row scrolls out of view.
 ```javascript
 tableView.addEventListener('rownotvisible', function(e) {
   // Pause media, cleanup resources
+});
+```
+
+#### `scroll` *(v2.3.0+)*
+
+Fired continuously while the table view is scrolling. Throttled to 30fps (60fps on ProMotion).
+
+**Event Properties:**
+- `contentOffset` (Object) – Current scroll position with `x` and `y`
+- `contentSize` (Object) – Total scrollable content size with `width` and `height`
+- `size` (Object) – Visible table view bounds with `width` and `height`
+- `velocity` (Object) – Scroll velocity with `x` and `y` (pixels/second)
+
+**Example:**
+```javascript
+tableView.addEventListener('scroll', function(e) {
+  console.log(`Scroll: y=${e.contentOffset.y}, velocity: ${e.velocity.y}`);
+});
+```
+
+#### `scrollend` *(v2.3.0+)*
+
+Fired when scrolling ends (user releases or deceleration completes).
+
+**Event Properties:**
+- `contentOffset` (Object) – Final scroll position with `x` and `y`
+- `contentSize` (Object) – Total scrollable content size
+- `size` (Object) – Visible table view bounds
+- `velocity` (Object) – Final velocity with `x` and `y`
+
+**Example:**
+```javascript
+tableView.addEventListener('scrollend', function(e) {
+  console.log(`Scroll ended at: y=${e.contentOffset.y}`);
 });
 ```
 
@@ -154,13 +315,13 @@ tableView.addEventListener('panend', function() {
 });
 ```
 
-### Row Methods
+### Row Properties
 
 #### `isVisible`
 
 Checks if a row is visible in the viewport.
 
-**Returns:** `Number` – `0` (not visible) or `1` (visible)
+**Type:** `Number` – `0` (not visible) or `1` (visible)
 
 **Example:**
 ```javascript
@@ -174,11 +335,27 @@ if (row.isVisible === 1) {
 
 Gets the Y position of the row relative to the superview.
 
-**Returns:** `Number` – Y offset in points
+**Type:** `Number` – Y offset in points
 
 **Example:**
 ```javascript
 const yOffset = tableView.data[0].rows[10].getTopOffset;
+```
+
+#### `opaqueRow`
+
+Makes the row and its subviews opaque for optimized rendering performance, while preserving selection visibility.
+
+**Type:** `Boolean`
+
+**Example:**
+```javascript
+const row = Ti.UI.createTableViewRow({
+  title: 'Optimized Row',
+  backgroundColor: '#ffffff',
+  backgroundSelectedColor: '#e0e0e0'
+});
+row.opaqueRow = true; // All subviews become opaque, selection colors show during touch
 ```
 
 ### ScrollView Methods
@@ -196,16 +373,26 @@ scrollView.scrollToBottomNoAnim();
 
 Same signature as TableView `setContentInsets`.
 
-### View Methods
-
-#### `opaqueView()`
-
-Makes a view and subviews opaque with clipping enabled (performance optimization).
+**Parameters:**
+- `insets` (Object) – Content inset values with `top`, `right`, `bottom`, `left`
+- `options` (Object) – Configuration object:
+  - `animated` (Boolean) – Animate the change (default: `false`)
+  - `duration` (Number) – Animation duration in ms (default: `180`)
+  - `safearea` (Number) – Additional safe area offset (default: `0`)
 
 **Example:**
 ```javascript
-view.opaqueView();
+scrollView.setContentInsets(
+  { top: 0, right: 0, bottom: 48, left: 0 },
+  { animated: true, duration: 300, safearea: 34 }
+);
 ```
+
+### View Properties
+
+#### `opaque` *(v2.3.0+)*
+
+The `opaque` property for `Ti.UI.View` was removed in v2.3.0. Use `opaqueRow` on `Ti.UI.TableViewRow` instead for optimized rendering.
 
 ## Usage
 
