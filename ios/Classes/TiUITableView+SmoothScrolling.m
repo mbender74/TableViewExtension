@@ -755,16 +755,16 @@ void TVECleanupCaches(void)
         
         CGFloat speed = fabs(lastScrollVelocity);
         
-        // Update volatile globals (main thread only)
+        // Update volatile globals (main thread only) - reduced behind rows for better performance
         if (speed > 1000) {
             gPreloadAheadRows = 10;
-            gPreloadBehindRows = 5;
+            gPreloadBehindRows = 2;  // Reduced from 5
         } else if (speed > 500) {
             gPreloadAheadRows = 7;
-            gPreloadBehindRows = 4;
+            gPreloadBehindRows = 2;  // Reduced from 4
         } else {
             gPreloadAheadRows = 5;
-            gPreloadBehindRows = 3;
+            gPreloadBehindRows = 1;  // Reduced from 3
         }
     }
     

@@ -332,25 +332,12 @@ typedef struct {
 
 
              NSIndexPath *path = [NSIndexPath indexPathForRow:row.row inSection:0];
-             CGFloat cellheight;
 
-    id rowProxyHeight = [row valueForUndefinedKey:@"height"];
-    if (rowProxyHeight && ![rowProxyHeight isEqual:@"SIZE"]) {
-            cellheight = [TiUtils floatValue:rowProxyHeight];
-            //row.height = [NSNumber numberWithFloat:cellheight];
-         //   NSLog(@"row.height %f",cellheight);
-         //  NSLog(@"row.height %f",cellheight);
-
-    }
-    else {
-        //CGRect cellRect = [tableview rectForRowAtIndexPath:path];
-        //cellheight = cellRect.size.height;
-        cellheight = ceil([row rowHeight:[row sizeWidthForDecorations:[self computeRowWidth] forceResizing:NO]]);
-        //row.height = [NSNumber numberWithFloat:cellheight];
+    // Get row height - use cached value if available (heightForRowAtIndexPath will cache on first access)
+            CGFloat cellheight = ceil([row rowHeight:[row sizeWidthForDecorations:[self computeRowWidth] forceResizing:NO]]);
+        
+        // Cache the calculated height for future use
         [row replaceValue:[NSNumber numberWithFloat:cellheight] forKey:@"height" notification:NO];
-       // NSLog(@"row.height calculated %f",cellheight);
-    }
-
 
     [UIView performWithoutAnimation:^{
         CGFloat currentOffset = self->tableview.contentOffset.y;
@@ -539,8 +526,9 @@ typedef struct {
             TableViewExtensionLog(@"snapping to bottom: cellMaxY=%f, offset=%f", CGRectGetMaxY(cellRect), offset->y);
 
         }
-       // [tableview setContentOffset:*offset];
-        TableViewExtensionLog(@"final targetOffset: %f -> %f", targetOffset->y, offset->y);
+        // Apply the calculated offset to snap to row boundaries
+        targetOffset->y = offset->y;
+        TableViewExtensionLog(@"snapping applied: targetOffset->y = %.1f", targetOffset->y);
 
     }
     else {
